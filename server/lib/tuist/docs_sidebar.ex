@@ -557,6 +557,10 @@ defmodule Tuist.Docs.Sidebar do
                 slug: "/en/guides/features/projects/synthesized-files"
               },
               %Item{
+                label: "Code generators",
+                slug: "/en/guides/features/projects/code-generators"
+              },
+              %Item{
                 label: "Dynamic configuration",
                 slug: "/en/guides/features/projects/dynamic-configuration"
               },

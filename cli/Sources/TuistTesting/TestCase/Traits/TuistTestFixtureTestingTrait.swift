@@ -6,8 +6,8 @@ import Testing
 public struct TuistTestFixtureTestingTrait: TestTrait, SuiteTrait, TestScoping {
     let fixtureDirectory: AbsolutePath
 
-    init(fixture: String) {
-        fixtureDirectory = Fixtures.directory.appending(component: fixture)
+    init(fixture: String, fixturesDirectory: AbsolutePath = Fixtures.directory) {
+        fixtureDirectory = fixturesDirectory.appending(component: fixture)
     }
 
     public func provideScope(
@@ -29,7 +29,7 @@ public struct TuistTestFixtureTestingTrait: TestTrait, SuiteTrait, TestScoping {
 }
 
 extension Trait where Self == TuistTestFixtureTestingTrait {
-    public static func withFixture(_ fixture: String) -> Self {
-        return Self(fixture: fixture)
+    public static func withFixture(_ fixture: String, fixturesDirectory: AbsolutePath = Fixtures.directory) -> Self {
+        return Self(fixture: fixture, fixturesDirectory: fixturesDirectory)
     }
 }

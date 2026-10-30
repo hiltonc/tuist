@@ -69,6 +69,8 @@ extension BuildableFolder {
     }
 
     fileprivate func partitioned() -> SingleFolderPartition? {
+        // A code generator's output folder holds sources only.
+        if isGenerated { return nil }
         if let folderLevel = folderLevelPartition() {
             return folderLevel
         }

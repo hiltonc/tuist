@@ -47,6 +47,9 @@ public struct WorkspaceMapperFactory: WorkspaceMapperFactorying {
     ) -> [WorkspaceMapping] {
         var mappers: [WorkspaceMapping] = []
 
+        // First, so project mappers see code generator output attached to its consumers.
+        mappers.append(CodeGeneratorWorkspaceMapper())
+
         mappers.append(
             ProjectWorkspaceMapper(mapper: projectMapper)
         )
