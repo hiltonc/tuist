@@ -1530,7 +1530,8 @@ import XcodeGraph
 #if canImport(TuistCacheEE)
     extension Target {
         fileprivate var isXCFrameworkCacheableProduct: Bool {
-            [
+            // A code generation target builds no binary; its consumers carry its hash.
+            codegen == nil && [
                 .framework,
                 .staticFramework,
                 .staticLibrary,

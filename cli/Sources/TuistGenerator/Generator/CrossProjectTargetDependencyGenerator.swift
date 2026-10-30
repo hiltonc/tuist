@@ -6,7 +6,7 @@ import XcodeProj
 
 /// Wires cross-project target dependencies and producer-linked product references.
 ///
-/// Foreign build aggregates produce no product that Xcode can use for implicit dependency discovery.
+/// Foreign build and code generation aggregates produce no product that Xcode can use for implicit dependency discovery.
 /// Swift macro implementations need an explicit target edge so Xcode can discover and propagate their
 /// native macro metadata.
 ///
@@ -89,10 +89,10 @@ struct CrossProjectTargetDependencyGenerator: CrossProjectTargetDependencyGenera
         var edges = Set<Edge>()
         for (consumerPath, project) in graphTraverser.projects {
             for (_, target) in project.targets {
-                guard target.foreignBuild == nil else { continue }
+                guard !target.isAggregate else { continue }
                 for reference in graphTraverser.directTargetDependencies(path: consumerPath, name: target.name) {
                     guard reference.graphTarget.path != consumerPath else { continue }
-                    guard reference.graphTarget.target.foreignBuild != nil || reference.graphTarget.target.product == .macro
+                    guard reference.graphTarget.target.isAggregate || reference.graphTarget.target.product == .macro
                     else {
                         continue
                     }

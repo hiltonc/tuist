@@ -52,6 +52,8 @@ public enum Constants {
         public static let tuistCacheDebugging = "TuistCacheDebugging"
         public static let sources = "Sources"
         public static let testPlans = "TestPlans"
+        /// Code generator output and the action hashes of their last runs, kept across generations.
+        public static let codeGen = "CodeGen"
         public static let signingKeychain = "signing.keychain"
         public static let dependenciesDerivedDirectory = "tuist-derived"
         public static let dependenciesProjectDirectory = "Projects"

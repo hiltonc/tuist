@@ -36,6 +36,7 @@ enum BuildServiceError: LocalizedError {
 
 public struct BuildService {
     private let generatorFactory: GeneratorFactorying
+    private let codeGeneratorMaterializer: CodeGeneratorMaterializing
     private let cacheStorageFactory: CacheStorageFactorying
     private let buildGraphInspector: BuildGraphInspecting
     private let targetBuilder: TargetBuilding
@@ -46,8 +47,10 @@ public struct BuildService {
         cacheStorageFactory: CacheStorageFactorying,
         buildGraphInspector: BuildGraphInspecting = BuildGraphInspector(),
         targetBuilder: TargetBuilding = TargetBuilder(),
-        configLoader: ConfigLoading = ConfigLoader()
+        configLoader: ConfigLoading = ConfigLoader(),
+        codeGeneratorMaterializer: CodeGeneratorMaterializing = CodeGeneratorMaterializer()
     ) {
+        self.codeGeneratorMaterializer = codeGeneratorMaterializer
         self.generatorFactory = generatorFactory
         self.cacheStorageFactory = cacheStorageFactory
         self.buildGraphInspector = buildGraphInspector
@@ -102,6 +105,10 @@ public struct BuildService {
                 path: path,
                 options: config.project.generatedProject?.generationOptions
             )
+            // Loading the graph never runs code generators, so building an existing workspace requests it.
+            if !generateOnly {
+                try await codeGeneratorMaterializer.materialize(graph: graph)
+            }
         }
 
         if generateOnly {

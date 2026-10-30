@@ -47,6 +47,8 @@ public struct TargetContentHashSubhashes: Codable, Hashable, Sendable {
     public let destinations: [String]?
     /// Hash of the foreign build script and its inputs, when present.
     public let foreignBuild: String?
+    /// Hash of the target's code generator declarations and their inputs, when present. Never of their output.
+    public let codeGenerators: String?
     /// Device name and runtime included when hashing UI tests.
     public let testDevice: String?
     public let testRuntime: String?
@@ -72,6 +74,7 @@ public struct TargetContentHashSubhashes: Codable, Hashable, Sendable {
         embeddedProductReferences: String? = nil,
         destinations: [String]? = nil,
         foreignBuild: String? = nil,
+        codeGenerators: String? = nil,
         testDevice: String? = nil,
         testRuntime: String? = nil
     ) {
@@ -95,6 +98,7 @@ public struct TargetContentHashSubhashes: Codable, Hashable, Sendable {
         self.embeddedProductReferences = embeddedProductReferences
         self.destinations = destinations
         self.foreignBuild = foreignBuild
+        self.codeGenerators = codeGenerators
         self.testDevice = testDevice
         self.testRuntime = testRuntime
     }
@@ -121,6 +125,7 @@ public struct TargetContentHashSubhashes: Codable, Hashable, Sendable {
             embeddedProductReferences: String? = nil,
             destinations: [String]? = nil,
             foreignBuild: String? = nil,
+            codeGenerators: String? = nil,
             testDevice: String? = nil,
             testRuntime: String? = nil
         ) -> TargetContentHashSubhashes {
@@ -145,6 +150,7 @@ public struct TargetContentHashSubhashes: Codable, Hashable, Sendable {
                 embeddedProductReferences: embeddedProductReferences,
                 destinations: destinations,
                 foreignBuild: foreignBuild,
+                codeGenerators: codeGenerators,
                 testDevice: testDevice,
                 testRuntime: testRuntime
             )

@@ -210,6 +210,11 @@ public struct ManifestGraphLoader: ManifestGraphLoading {
             workspace: .init(workspace: workspaceModels, projects: projectsModels)
         )
 
+        // Code generation targets add dependencies no manifest declared, so check for cycles again.
+        if updatedModels.projects.contains(where: { $0.targets.values.contains { $0.codegen != nil } }) {
+            try graphLoaderLinter.lintWorkspace(workspace: updatedModels.workspace, projects: updatedModels.projects)
+        }
+
         // Load graph
         let graphLoader = GraphLoader()
         let graph = try await graphLoader.loadWorkspace(

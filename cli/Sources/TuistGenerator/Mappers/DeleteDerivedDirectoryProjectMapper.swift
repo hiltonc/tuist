@@ -22,6 +22,7 @@ public struct DeleteDerivedDirectoryProjectMapper: ProjectMapping {
             Constants.DerivedDirectory.infoPlists,
             Constants.DerivedDirectory.entitlements,
             Constants.DerivedDirectory.testPlans,
+            Constants.DerivedDirectory.codeGen,
         ],
         fileSystem: FileSysteming = FileSystem()
     ) {

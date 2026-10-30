@@ -108,6 +108,38 @@ struct BuildPhaseGeneratorTests {
     @Test(
         .withMockedSwiftVersionProvider,
         .withMockedXcodeController,
+        .inTemporaryDirectory,
+        arguments: Product.allCases.filter { $0 != .watch2App && $0 != .stickerPackExtension }
+    ) func generateSourcesBuildPhase_whenOnlySourcesAreAGeneratedFolderThatDoesNotExistYet(product: Product) async throws {
+        // Given
+        let pbxTarget = PBXNativeTarget(name: "Test")
+        let pbxproj = PBXProj()
+        pbxproj.add(object: pbxTarget)
+        let generatedFolder = BuildableFolder(
+            path: "/Project/Derived/CodeGen/Targets/Test/generator/Sources",
+            exceptions: BuildableFolderExceptions(exceptions: []),
+            resolvedFiles: [],
+            isGenerated: true
+        )
+        let target = Target.test(product: product, sources: [], buildableFolders: [generatedFolder])
+
+        // When
+        try await subject.generateSourcesBuildPhase(
+            files: [],
+            coreDataModels: [],
+            target: target,
+            pbxTarget: pbxTarget,
+            fileElements: ProjectFileElements(),
+            pbxproj: pbxproj
+        )
+
+        // Then
+        #expect(try pbxTarget.sourcesBuildPhase() != nil)
+    }
+
+    @Test(
+        .withMockedSwiftVersionProvider,
+        .withMockedXcodeController,
         .inTemporaryDirectory
     ) func generateSourcesBuildPhase_whenMultiPlatformSourceFiles() async throws {
         // Given

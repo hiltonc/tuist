@@ -37,14 +37,17 @@ public class Generator: Generating {
     private let sideEffectDescriptorExecutor: SideEffectDescriptorExecuting
     private let configLoader: ConfigLoading
     private let manifestGraphLoader: ManifestGraphLoading
+    private let codeGeneratorMaterializer: CodeGeneratorMaterializing
     private var lintingIssues: [LintingIssue] = []
 
     public init(
-        manifestGraphLoader: ManifestGraphLoading
+        manifestGraphLoader: ManifestGraphLoading,
+        codeGeneratorMaterializer: CodeGeneratorMaterializing = CodeGeneratorMaterializer()
     ) {
         sideEffectDescriptorExecutor = SideEffectDescriptorExecutor()
         configLoader = ConfigLoader()
         self.manifestGraphLoader = manifestGraphLoader
+        self.codeGeneratorMaterializer = codeGeneratorMaterializer
     }
 
     public func generate(
@@ -85,6 +88,10 @@ public class Generator: Generating {
 
         // Mapper side effects
         try await sideEffectDescriptorExecutor.execute(sideEffects: sideEffects)
+
+        // Code generators run after the project is written, on the graph left after focus, tree-shaking, and cache
+        // substitution. Their output folders are attached by path, so the project doesn't depend on their contents.
+        try await codeGeneratorMaterializer.materialize(graph: graph)
 
         // Post Generate Actions
         try await postGenerationActions(

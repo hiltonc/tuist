@@ -1,0 +1,9 @@
+type Account {
+  id: ID!
+  balance: Float!
+}
+
+type Portfolio {
+  id: ID!
+  name: String!
+}
