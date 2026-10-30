@@ -55,6 +55,7 @@ public struct TargetContentHasher: TargetContentHashing { // swiftlint:disable:t
     private let dependenciesContentHasher: DependenciesContentHashing
     private let foreignBuildHasher: ForeignBuildHashing
     private let additionalHashingInputsHasher: AdditionalHashingInputsHashing
+    private let codeGeneratorActionHasher: CodeGeneratorActionHashing
 
     // MARK: - Init
 
@@ -86,7 +87,8 @@ public struct TargetContentHasher: TargetContentHashing { // swiftlint:disable:t
             ),
             dependenciesContentHasher: DependenciesContentHasher(contentHasher: contentHasher),
             foreignBuildHasher: ForeignBuildHasher(contentHasher: contentHasher),
-            additionalHashingInputsHasher: AdditionalHashingInputsHasher(contentHasher: contentHasher)
+            additionalHashingInputsHasher: AdditionalHashingInputsHasher(contentHasher: contentHasher),
+            codeGeneratorActionHasher: CodeGeneratorActionHasher(contentHasher: contentHasher)
         )
     }
 
@@ -103,7 +105,8 @@ public struct TargetContentHasher: TargetContentHashing { // swiftlint:disable:t
         settingsContentHasher: SettingsContentHashing,
         dependenciesContentHasher: DependenciesContentHashing,
         foreignBuildHasher: ForeignBuildHashing,
-        additionalHashingInputsHasher: AdditionalHashingInputsHashing
+        additionalHashingInputsHasher: AdditionalHashingInputsHashing,
+        codeGeneratorActionHasher: CodeGeneratorActionHashing? = nil
     ) {
         self.contentHasher = contentHasher
         self.sourceFilesContentHasher = sourceFilesContentHasher
@@ -118,6 +121,7 @@ public struct TargetContentHasher: TargetContentHashing { // swiftlint:disable:t
         self.dependenciesContentHasher = dependenciesContentHasher
         self.foreignBuildHasher = foreignBuildHasher
         self.additionalHashingInputsHasher = additionalHashingInputsHasher
+        self.codeGeneratorActionHasher = codeGeneratorActionHasher ?? CodeGeneratorActionHasher(contentHasher: contentHasher)
     }
 
     // MARK: - TargetContentHashing
@@ -235,8 +239,10 @@ public struct TargetContentHasher: TargetContentHashing { // swiftlint:disable:t
             }
 
         let hashingFilesFilter = HashingFilesFilter()
+        // A generated folder's contents are covered by the generator's action hash instead, so the hash doesn't
+        // depend on whether the generator has run.
         let buildableFolderHashes = try await graphTarget.target
-            .buildableFolders.sorted(by: { $0.path < $1.path })
+            .buildableFolders.filter { !$0.isCodeGeneratorOutput }.sorted(by: { $0.path < $1.path })
             .map { buildableFolder in
                 let resolvedFiles = buildableFolder.resolvedFiles
                     .filter { hashingFilesFilter($0.path) }
@@ -356,6 +362,15 @@ public struct TargetContentHasher: TargetContentHashing { // swiftlint:disable:t
         } else {
             foreignBuildHash = nil
         }
+        let codeGeneratorActions = CodeGeneratorAction.actions(
+            for: graphTarget.target,
+            projectPath: graphTarget.project.path
+        )
+        let codeGeneratorsHash: String? = codeGeneratorActions.isEmpty
+            ? nil
+            : try contentHasher.hash(
+                try await codeGeneratorActions.concurrentMap { try await codeGeneratorActionHasher.hash(action: $0) }
+            )
         let subhashes = TargetContentHashSubhashes(
             sources: sourcesHash,
             resources: resourcesHash,
@@ -376,6 +391,7 @@ public struct TargetContentHasher: TargetContentHashing { // swiftlint:disable:t
             embeddedProductReferences: embeddedProductReferencesHash,
             destinations: destinations,
             foreignBuild: foreignBuildHash,
+            codeGenerators: codeGeneratorsHash,
             testDevice: destinationHashes.first,
             testRuntime: destinationHashes.last
         )
@@ -407,6 +423,7 @@ public struct TargetContentHasher: TargetContentHashing { // swiftlint:disable:t
             infoPlist: \(infoPlistHash ?? "nil")
             entitlements: \(entitlementsHash ?? "nil")
             embeddedProductReferences: \(embeddedProductReferencesHash ?? "nil")
+            codeGenerators: \(codeGeneratorsHash ?? "nil")
         """)
 
         return TargetContentHash(
@@ -471,6 +488,7 @@ public struct TargetContentHasher: TargetContentHashing { // swiftlint:disable:t
             subhashes.headers, deploymentTarget ?? subhashes.deploymentTarget,
             subhashes.infoPlist, subhashes.entitlements, subhashes.projectSettings,
             subhashes.targetSettings, subhashes.foreignBuild, subhashes.embeddedProductReferences,
+            subhashes.codeGenerators,
         ].compactMap { $0 }
         return try contentHasher.hash(strings)
     }

@@ -600,7 +600,8 @@ public class GraphTraverser: GraphTraversing {
                     guard case let GraphDependency.target(dependencyName, dependencyPath, _) =
                         dependency,
                         let target = graph.projects[dependencyPath]?.targets[dependencyName],
-                        target.product.isStatic
+                        target.product.isStatic,
+                        target.codegen == nil
                     else {
                         return nil
                     }
