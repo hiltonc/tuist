@@ -12,18 +12,7 @@ public protocol CodeGeneratorActionHashing: Sendable {
     func hash(action: CodeGeneratorAction) async throws -> String
 }
 
-/// Hashes a code generator's declaration, never its output.
-///
-/// The hash covers, per input, the kind plus:
-///
-/// - `.file`: the logical path and contents.
-/// - `.folder`: the logical path, and the relative paths and contents of the whole tree.
-/// - `.glob`: the unexpanded pattern, and the logical path and contents of each match.
-/// - `.script`: standard output.
-///
-/// and per action the command, the generator's name, the declaring target's identity, the declared environment, and
-/// for a multi-target generator its outputs. Logical paths are relative to the repository root or the manifest's
-/// directory, so two checkouts at different paths agree.
+/// Hashes paths by their logical form, so two checkouts at different paths agree.
 public struct CodeGeneratorActionHasher: CodeGeneratorActionHashing {
     private static let version = "1"
 
@@ -68,9 +57,8 @@ public struct CodeGeneratorActionHasher: CodeGeneratorActionHashing {
             case .file, .folder, .glob:
                 guard let resolved = resolvedInputs.next() else { continue }
                 components.append("\(resolved.kind.rawValue):\(resolved.declared.logicalPath)")
-                for file in resolved.files {
-                    let contentHash = try await contentHasher.hash(path: file.path)
-                    components.append("entry:\(file.logicalPath):\(contentHash)")
+                components += try await resolved.files.concurrentMap { file in
+                    "entry:\(file.logicalPath):\(try await contentHasher.hash(path: file.path))"
                 }
             }
         }

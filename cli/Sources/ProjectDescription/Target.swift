@@ -341,7 +341,7 @@ public struct Target: Codable, Equatable, Sendable {
             destinations: .iOS,
             product: .staticLibrary,
             productName: nil,
-            bundleId: "tuist.codegen.\(name)",
+            bundleId: "tuist.codegen.\(String(name.map { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") ? $0 : "-" }))",
             deploymentTargets: nil,
             infoPlist: nil,
             sources: nil,

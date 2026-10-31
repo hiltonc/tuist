@@ -78,9 +78,8 @@ public struct Target: Equatable, Hashable, Comparable, Codable, Sendable {
     /// Generators that produce sources for this target.
     public var codeGenerators: [CodeGenerator]
 
-    /// Set when this is a code generation target: a product-less target whose generator produces sources for the
-    /// targets in ``CodeGenerator/outputs``. It builds nothing and links into nothing; consumers depend on it so
-    /// their hash moves with its declaration.
+    /// Set when this is a code generation target, whose generator produces sources for the targets in
+    /// ``CodeGenerator/outputs``. It builds and links nothing.
     public var codegen: CodeGenerator?
 
     // MARK: - Init

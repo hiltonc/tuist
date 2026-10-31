@@ -6,8 +6,9 @@
 #
 # Environment for a per-target generator, which has exactly one output directory:
 #
-#   TUIST_INPUTS_FILE   JSON array of {type, path}, one entry per declared path input,
-#                       resolved absolute, globs already expanded. `.script` inputs are absent
+#   TUIST_INPUTS_FILE   JSON array of {type, path}, resolved absolute: one `file` entry per
+#                       `.file` and per `.glob` match, one `folder` entry per `.folder`.
+#                       `.script` inputs are absent
 #   TUIST_OUTPUT_SOURCES_DIR  where to write; Tuist creates it before invoking. A staging
 #                       directory, moved into place only after this script exits zero: write
 #                       files into it, but do not hard-code its path inside them, because the
