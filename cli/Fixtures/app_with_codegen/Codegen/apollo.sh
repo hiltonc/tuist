@@ -3,14 +3,14 @@
 # SEVERAL targets, and not decomposable per target. The operation set is discovered by
 # scanning, so the generated file *set* is not knowable from the manifest.
 #
-# Environment for a multi-target generator, which has one output directory per consumer,
+# Environment for a code generation target, which has one output directory per consumer,
 # named in a file rather than in variables because the consumers are not known here:
 #
 #   TUIST_INPUTS_FILE   JSON array of {type, path}
 #   TUIST_OUTPUTS_FILE  JSON array of {project, target, path}, one entry per declared
 #                       output. An array rather than an object keyed by target, because
 #                       target names are not unique across projects.
-#   TUIST_TARGET_NAME   this codegen target's own name
+#   TUIST_TARGET_NAME   this code generation target's own name
 #   TUIST_ROOT_DIR      repo root
 #   TUIST_PROJECT_DIR   the project directory, NOT the repo root
 #

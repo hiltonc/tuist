@@ -60,8 +60,18 @@ extension XcodeGraph.CodeGenerator.Path {
         generatorPaths: GeneratorPaths
     ) throws -> XcodeGraph.CodeGenerator.Path {
         let resolvedPath = try generatorPaths.resolve(path: manifest)
-        let anchor: Anchor = manifest.type == .relativeToRoot ? .repository : .project
-        let anchorDirectory = anchor == .repository ? generatorPaths.rootDirectory : generatorPaths.manifestDirectory
+        let anchor: Anchor = if !resolvedPath.isDescendantOfOrEqual(to: generatorPaths.rootDirectory) {
+            .absolute
+        } else if manifest.type == .relativeToRoot {
+            .repository
+        } else {
+            .project
+        }
+        let anchorDirectory = switch anchor {
+        case .absolute: AbsolutePath.root
+        case .repository: generatorPaths.rootDirectory
+        case .project: generatorPaths.manifestDirectory
+        }
         return XcodeGraph.CodeGenerator.Path(
             anchor: anchor,
             anchorDirectory: anchorDirectory,

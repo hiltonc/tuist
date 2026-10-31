@@ -21,7 +21,7 @@ public struct CodeGenerator: Equatable, Hashable, Codable, Sendable {
     /// contribute to the action hash.
     public let environment: [String: String]
 
-    /// The targets a multi-target generator produces sources for. Empty for a per-target generator.
+    /// The targets a code generation target produces sources for. Empty for a per-target generator.
     public let outputs: [Output]
 
     /// The repository root, which `//` input paths and logical identities are relative to.
@@ -66,6 +66,8 @@ public struct CodeGenerator: Equatable, Hashable, Codable, Sendable {
             case project
             /// The repository root, written with a `//` prefix.
             case repository
+            /// The file system root, for a path outside the repository.
+            case absolute
         }
 
         public let anchor: Anchor
@@ -90,7 +92,7 @@ public struct CodeGenerator: Equatable, Hashable, Codable, Sendable {
         }
 
         /// The path as the manifest names it, which is machine-independent: `//` and the path relative to the
-        /// repository root, or the path relative to the manifest's directory.
+        /// repository root, the path relative to the manifest's directory, or an absolute path outside the repository.
         public var logicalPath: String {
             logicalPath(of: relativePath)
         }
@@ -104,11 +106,12 @@ public struct CodeGenerator: Equatable, Hashable, Codable, Sendable {
             switch anchor {
             case .project: relativePath
             case .repository: "//\(relativePath)"
+            case .absolute: "/\(relativePath)"
             }
         }
     }
 
-    /// A target a multi-target generator produces sources for.
+    /// A target a code generation target produces sources for.
     public struct Output: Equatable, Hashable, Codable, Sendable {
         /// The directory of the project containing the consumer.
         public let projectPath: AbsolutePath

@@ -51,7 +51,8 @@ struct TargetContentHasherTests {
             settingsContentHasher: settingsContentHasher,
             dependenciesContentHasher: dependenciesContentHasher,
             foreignBuildHasher: foreignBuildHasher,
-            additionalHashingInputsHasher: additionalHashingInputsHasher
+            additionalHashingInputsHasher: additionalHashingInputsHasher,
+            codeGeneratorActionHasher: MockCodeGeneratorActionHashing()
         )
 
         given(contentHasher)

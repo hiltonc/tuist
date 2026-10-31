@@ -90,7 +90,7 @@ public struct CodeGenerator: Codable, Equatable, Sendable {
         case script(String)
     }
 
-    /// A target a multi-target generator produces sources for. See
+    /// A target a code generation target produces sources for. See
     /// ``Target/codegen(name:script:inputs:environment:outputs:metadata:)``.
     public struct Output: Codable, Hashable, Sendable {
         /// The project containing the consumer. `nil` for the generator's own project.

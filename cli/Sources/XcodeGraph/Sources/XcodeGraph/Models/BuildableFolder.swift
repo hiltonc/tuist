@@ -34,9 +34,7 @@ public struct BuildableFolder: Sendable, Codable, Equatable, Hashable {
     /// The files resolved from this buildable folder, each with any per-file compiler flags.
     public var resolvedFiles: [BuildableFolderFile]
 
-    /// Whether the folder holds a code generator's output. A generated folder contributes no file contents to any
-    /// hash, since the generator's declaration does instead, and counts as containing sources whether or not the
-    /// generator has run.
+    /// Whether the folder holds a code generator's output, which counts as sources whether or not the generator has run.
     public var isGenerated: Bool
 
     /// Creates a new `BuildableFolder` instance.

@@ -3,11 +3,12 @@ import FileSystemTesting
 import Foundation
 import Path
 import Testing
+import TuistAlert
 import TuistCore
 import TuistHasher
 import TuistTesting
 import XcodeGraph
-@testable import TuistKit
+@testable import TuistCodeGen
 
 struct CodeGeneratorMaterializerTests {
     private let fileSystem = FileSystem()
@@ -62,22 +63,36 @@ struct CodeGeneratorMaterializerTests {
     }
 
     @Test(.inTemporaryDirectory, .withMockedLogger())
-    func materialize_regenerates_when_a_crash_left_no_recorded_hash() async throws {
+    func materialize_leaves_no_recorded_hash_when_the_swap_fails_partway() async throws {
         let root = try #require(FileSystem.temporaryTestDirectory)
         let project = try await makeProject(root: root)
         let counter = root.appending(component: "runs")
-        let generator = perTargetGenerator(root: root, script: """
+        let graph = codeGenerationTargetGraph(project: project, root: root, script: """
         echo run >> "\(counter.pathString)"
-        echo "let a = 1" > "$TUIST_OUTPUT_SOURCES_DIR/A.swift"
+        /usr/bin/python3 -c '
+        import json, os
+        for output in json.load(open(os.environ["TUIST_OUTPUTS_FILE"])):
+            open(os.path.join(output["path"], "Generated.swift"), "w").write("")
+        '
         """)
-        let graph = graph(project: project, codeGenerators: [generator])
         try await subject.materialize(graph: graph)
+        try await fileSystem.writeText(
+            #"{"key": "changed"}"#,
+            at: project.appending(components: "Strings", "en.json"),
+            options: Set([.overwrite])
+        )
+        let secondOutputParent = producerOutputDirectory(project: project, consumer: "GQLTypes").parentDirectory
+        try await fileSystem.remove(secondOutputParent)
+        try await fileSystem.writeText("", at: secondOutputParent)
 
-        // A crash between deleting the recorded hash and writing the new one leaves the output without a hash.
-        try await fileSystem.remove(stateFile(project: project, generator: generator))
+        await #expect(throws: (any Error).self) { try await subject.materialize(graph: graph) }
+
+        #expect(try await fileSystem.exists(producerOutputDirectory(project: project, consumer: "GQLSchema")))
+        #expect(try await !fileSystem.exists(CodeGeneratorLayout.producerStatePath(projectPath: project, producer: "GQLCodegen")))
+        try await fileSystem.remove(secondOutputParent)
         try await subject.materialize(graph: graph)
-
-        #expect(try await runs(counter) == 2)
+        #expect(try await runs(counter) == 3)
+        #expect(try await fileSystem.exists(CodeGeneratorLayout.producerStatePath(projectPath: project, producer: "GQLCodegen")))
     }
 
     @Test(.inTemporaryDirectory, .withMockedLogger())
@@ -131,6 +146,7 @@ struct CodeGeneratorMaterializerTests {
             generator: "strings",
             target: "AccountUI",
             exitCode: 3,
+            standardOutput: "",
             standardError: "boom\n"
         )) {
             try await subject.materialize(graph: graph(project: project, codeGenerators: [failing]))
@@ -206,7 +222,86 @@ struct CodeGeneratorMaterializerTests {
         #expect(try await !fileSystem.exists(marker))
     }
 
+    @Test(.inTemporaryDirectory, .withMockedLogger())
+    func materialize_runs_a_code_generation_target_when_some_of_its_consumers_were_pruned() async throws {
+        let root = try #require(FileSystem.temporaryTestDirectory)
+        let project = try await makeProject(root: root)
+        let marker = root.appending(component: "ran")
+        var graph = codeGenerationTargetGraph(project: project, root: root, script: "touch \"\(marker.pathString)\"")
+        graph.projects[project]?.targets["GQLTypes"] = nil
+
+        try await subject.materialize(graph: graph)
+
+        #expect(try await fileSystem.exists(marker))
+    }
+
+    @Test(.inTemporaryDirectory, .withMockedLogger(), .withScopedAlertController())
+    func materialize_warns_about_empty_globs_empty_output_and_standard_error() async throws {
+        let root = try #require(FileSystem.temporaryTestDirectory)
+        let project = try await makeProject(root: root)
+        let generator = CodeGenerator(
+            name: "strings",
+            script: "echo careful >&2",
+            inputs: [.glob(CodeGenerator.Path(anchor: .project, anchorDirectory: project, relativePath: "Strings/*.yml"))],
+            rootDirectory: root
+        )
+
+        try await subject.materialize(graph: graph(project: project, codeGenerators: [generator]))
+
+        let warnings = AlertController.current.warnings().map(\.message).map { $0.plain() }
+        #expect(warnings == [
+            "The glob input 'Strings/*.yml' of the code generator 'strings' of target 'AccountUI' matched no files.",
+            "The code generator 'strings' of target 'AccountUI' wrote to standard error:\ncareful",
+            "The code generator 'strings' of target 'AccountUI' produced no files for target 'AccountUI'.",
+        ])
+    }
+
+    @Test(.inTemporaryDirectory, .withMockedLogger())
+    func materialize_reports_standard_output_and_error_when_the_generator_fails() async throws {
+        let root = try #require(FileSystem.temporaryTestDirectory)
+        let project = try await makeProject(root: root)
+        let generator = perTargetGenerator(root: root, script: """
+        echo "schema.graphqls:3: unknown type"
+        echo "boom" >&2
+        exit 1
+        """)
+
+        await #expect(throws: CodeGeneratorMaterializerError.generatorFailed(
+            generator: "strings",
+            target: "AccountUI",
+            exitCode: 1,
+            standardOutput: "schema.graphqls:3: unknown type\n",
+            standardError: "boom\n"
+        )) {
+            try await subject.materialize(graph: graph(project: project, codeGenerators: [generator]))
+        }
+    }
+
     // MARK: - Helpers
+
+    private func codeGenerationTargetGraph(project: AbsolutePath, root: AbsolutePath, script: String) -> Graph {
+        let codegen = CodeGenerator(
+            name: "GQLCodegen",
+            script: script,
+            inputs: [.file(CodeGenerator.Path(anchor: .project, anchorDirectory: project, relativePath: "Strings/en.json"))],
+            outputs: [
+                CodeGenerator.Output(projectPath: project, target: "GQLSchema"),
+                CodeGenerator.Output(projectPath: project, target: "GQLTypes"),
+            ],
+            rootDirectory: root
+        )
+        return .test(projects: [
+            project: .test(path: project, targets: [
+                .test(name: "GQLCodegen", product: .staticLibrary, codegen: codegen),
+                .test(name: "GQLSchema", product: .staticFramework),
+                .test(name: "GQLTypes", product: .staticFramework),
+            ]),
+        ])
+    }
+
+    private func producerOutputDirectory(project: AbsolutePath, consumer: String) -> AbsolutePath {
+        CodeGeneratorLayout.producerOutputDirectory(consumerProjectPath: project, producer: "GQLCodegen", consumer: consumer)
+    }
 
     private func makeProject(root: AbsolutePath) async throws -> AbsolutePath {
         let project = root.appending(components: "Projects", "DesignSystem")

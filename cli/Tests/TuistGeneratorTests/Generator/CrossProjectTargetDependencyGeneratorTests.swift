@@ -295,6 +295,57 @@ struct CrossProjectTargetDependencyGeneratorTests {
         #expect(consumerPbxProject.mainGroup.children.contains(remoteRef))
     }
 
+    @Test func generate_wiresCrossProjectDependencyOnACodeGenerationTarget() async throws {
+        let consumerPath = try AbsolutePath(validating: "/Workspace/Networking")
+        let producerPath = try AbsolutePath(validating: "/Workspace/Core")
+        let producer = Target.test(
+            name: "GQLCodegen",
+            product: .staticLibrary,
+            codegen: CodeGenerator(
+                name: "GQLCodegen",
+                script: "exit 0",
+                inputs: [],
+                outputs: [CodeGenerator.Output(projectPath: consumerPath, target: "GQLTransport")],
+                rootDirectory: "/Workspace"
+            )
+        )
+        let consumer = Target.test(
+            name: "GQLTransport",
+            dependencies: [.project(target: "GQLCodegen", path: producerPath)]
+        )
+        let graph = Graph.test(
+            projects: [
+                producerPath: Project.test(path: producerPath, targets: [producer]),
+                consumerPath: Project.test(path: consumerPath, targets: [consumer]),
+            ],
+            dependencies: [
+                .target(name: "GQLTransport", path: consumerPath): Set([.target(name: "GQLCodegen", path: producerPath)]),
+            ]
+        )
+        let producerDescriptor = makeDescriptor(path: producerPath, aggregateTargets: ["GQLCodegen"])
+        let consumerDescriptor = makeDescriptor(path: consumerPath, nativeTargets: ["GQLTransport"])
+
+        try subject.generate(
+            graphTraverser: GraphTraverser(graph: graph),
+            projectDescriptors: [producerDescriptor, consumerDescriptor]
+        )
+
+        let consumerTarget = try #require(
+            consumerDescriptor.xcodeProj.pbxproj.nativeTargets.first(where: { $0.name == "GQLTransport" })
+        )
+        let dependency = try #require(consumerTarget.dependencies.first)
+        let producerTarget = try #require(
+            producerDescriptor.xcodeProj.pbxproj.aggregateTargets.first(where: { $0.name == "GQLCodegen" })
+        )
+        #expect(dependency.name == "GQLCodegen")
+        #expect(dependency.targetProxy?.remoteInfo == "GQLCodegen")
+        guard case let .object(remoteObject) = dependency.targetProxy?.remoteGlobalID else {
+            Issue.record("Expected remoteGlobalID to point at the code generation target")
+            return
+        }
+        #expect(remoteObject.uuid == producerTarget.uuid)
+    }
+
     @Test func generate_wiresCrossProjectMacroDependencyOnConsumer() async throws {
         let consumerPath = try AbsolutePath(validating: "/Workspace/Consumer")
         let macroPath = try AbsolutePath(validating: "/Workspace/Macros")

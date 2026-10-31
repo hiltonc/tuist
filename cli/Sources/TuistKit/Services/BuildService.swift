@@ -2,6 +2,7 @@ import Foundation
 import Path
 import TuistAlert
 import TuistAutomation
+import TuistCodeGen
 import TuistConfig
 import TuistConfigLoader
 import TuistCore
@@ -105,7 +106,6 @@ public struct BuildService {
                 path: path,
                 options: config.project.generatedProject?.generationOptions
             )
-            // Loading the graph never runs code generators, so building an existing workspace requests it.
             if !generateOnly {
                 try await codeGeneratorMaterializer.materialize(graph: graph)
             }

@@ -11,17 +11,22 @@ struct CodeGeneratorActionHasherTests {
     private let fileSystem = FileSystem()
     private let subject = CodeGeneratorActionHasher(contentHasher: ContentHasher())
 
-    @Test(.inTemporaryDirectory)
-    func hash_is_independent_of_the_checkout_location() async throws {
+    @Test(.inTemporaryDirectory, arguments: [false, true])
+    func hash_is_independent_of_the_checkout_location(isCodeGenerationTarget: Bool) async throws {
         let temporaryDirectory = try #require(FileSystem.temporaryTestDirectory)
         let first = temporaryDirectory.appending(component: "first")
         let second = temporaryDirectory.appending(components: "nested", "second")
         for root in [first, second] {
             try await writeFixture(root: root)
         }
+        let actionFor = { (root: AbsolutePath) in
+            isCodeGenerationTarget
+                ? try codeGenerationTargetAction(root: root, inputs: fixtureInputs(root: root))
+                : action(root: root, inputs: fixtureInputs(root: root))
+        }
 
-        let firstHash = try await subject.hash(action: action(root: first, inputs: fixtureInputs(root: first)))
-        let secondHash = try await subject.hash(action: action(root: second, inputs: fixtureInputs(root: second)))
+        let firstHash = try await subject.hash(action: actionFor(first))
+        let secondHash = try await subject.hash(action: actionFor(second))
 
         #expect(firstHash == secondHash)
     }
@@ -245,5 +250,22 @@ struct CodeGeneratorActionHasherTests {
             for: .test(name: targetName, codeGenerators: [generator]),
             projectPath: root.appending(components: "Projects", "Core")
         )[0]
+    }
+
+    private func codeGenerationTargetAction(root: AbsolutePath, inputs: [CodeGenerator.Input]) throws -> CodeGeneratorAction {
+        let generator = CodeGenerator(
+            name: "GQLCodegen",
+            script: "exit 0",
+            inputs: inputs,
+            outputs: [
+                CodeGenerator.Output(projectPath: root.appending(components: "Projects", "Core"), target: "GQLSchema"),
+                CodeGenerator.Output(projectPath: root.appending(components: "Projects", "App"), target: "App"),
+            ],
+            rootDirectory: root
+        )
+        return try #require(CodeGeneratorAction.actions(
+            for: .test(name: "GQLCodegen", codegen: generator),
+            projectPath: root.appending(components: "Projects", "Core")
+        ).first)
     }
 }

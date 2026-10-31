@@ -7,7 +7,7 @@
 ---
 # Code generators {#code-generators}
 
-A code generator is a command that produces some of a target's sources from a declared set of inputs, such as SwiftGen accessors, typed localized strings, or Apollo GraphQL types. Declaring it in the manifest lets Tuist run it during `tuist generate`, `tuist build`, and `tuist test`, attach its output to the target, and fold its inputs into the target's [content hash](/guides/features/projects/hashing), so the generator needs no wrapper command and no caching of its own.
+A code generator is a command that produces some of a target's sources from a declared set of inputs. SwiftGen accessors, typed localized strings, and Apollo GraphQL types are typical examples. Tuist runs it during `tuist generate`, `tuist build`, and `tuist test` and attaches its output to the target. Its declaration and inputs contribute to the target's [content hash](/guides/features/projects/hashing).
 
 ## Per-target generators {#per-target-generators}
 
@@ -65,11 +65,11 @@ Tuist never hashes generated output. It hashes the generator's declaration inste
 - for `.glob`, the pattern, and the path and contents of every match
 - for `.script`, its standard output
 
-Paths contribute as the manifest writes them: relative to the manifest's directory, or to the repository root when prefixed with `//`. Renaming an input therefore invalidates the output, since generators often derive type names from file names, while two checkouts at different locations still share cache hits. Inputs never resolve inside a `Derived` directory, so a pattern such as `//Projects/**/*.graphql` doesn't reach generated output.
+Paths contribute as the manifest writes them: relative to the manifest's directory, or to the repository root when prefixed with `//`. Renaming an input therefore invalidates the output, since generators often derive type names from file names. Two checkouts at different locations still share cache hits. Inputs never resolve inside a `Derived` directory, so a pattern such as `//Projects/**/*.graphql` doesn't reach generated output.
 
-A glob that matches nothing is a warning, not an error. The pattern still contributes to the hash, so it changes once the first match appears.
+Tuist warns, rather than failing, when a glob matches nothing. The pattern still contributes to the hash, so it changes once the first match appears.
 
-`environment` names the variables the output depends on. Its values are added to the inherited environment and contribute to the hash; the rest of the environment, `PATH` included, doesn't. To capture which build of a tool ran, declare a `.script` input such as `.script("mise x -- swiftgen --version")`. Script inputs run from the project's directory with `TUIST_ROOT_DIR`, `TUIST_PROJECT_DIR`, `TUIST_TARGET_NAME`, and the declared environment set.
+The `environment` parameter names the variables the output depends on. Its values are added to the inherited environment and contribute to the hash; the rest of the environment, `PATH` included, doesn't. To capture which build of a tool ran, declare a `.script` input such as `.script("mise x -- swiftgen --version")`. Script inputs run from the project's directory with `TUIST_ROOT_DIR`, `TUIST_PROJECT_DIR`, `TUIST_TARGET_NAME`, and the declared environment set.
 
 > [!IMPORTANT]
 > **Declare everything the output depends on**
@@ -80,7 +80,7 @@ An input can't overlap an output directory in either direction.
 
 ## When generators run {#when-generators-run}
 
-`tuist generate`, `tuist build`, and `tuist test` run generators after focus, tree-shaking, and binary cache substitution, so a target that's excluded or replaced by a cached binary doesn't run its generators. The project is written first; output folders are attached by path, so Xcode picks up their contents once the generators finish.
+Tuist runs generators during `tuist generate`, `tuist build`, and `tuist test`, after focus, tree-shaking, and binary cache substitution. A target that's excluded or replaced by a cached binary doesn't run its generators. Tuist writes the project first and attaches output folders by path, so Xcode picks up their contents once the generators finish.
 
 Tuist records each generator's hash under `Derived/CodeGen/State`. A generator is skipped when the recorded hash matches and its output directories exist. Otherwise it writes into fresh staging directories, and once it exits zero, Tuist replaces the previous output and records the new hash. As a result:
 
@@ -88,11 +88,11 @@ Tuist records each generator's hash under `Derived/CodeGen/State`. A generator i
 - a failed run keeps the previous output, and a non-zero exit fails the command
 - a run interrupted while output is being replaced runs again next time
 
-A generator that produces no files is a warning. Output and state for generators or targets that no longer exist are deleted on the next `tuist generate`.
+Tuist warns when a generator produces no files. On the next `tuist generate`, Tuist deletes output and state for generators or targets that no longer exist.
 
-## Multi-target generators {#multi-target-generators}
+## Code generation targets {#code-generation-targets}
 
-Some generators emit into several modules from one invocation, such as an Apollo configuration that splits schema types and operation types. A product-less `.codegen` target runs once and feeds several targets:
+Some generators emit into several modules from one invocation, such as an Apollo configuration that splits schema types and operation types. A code generation target, created with `.codegen`, is a product-less target whose generator runs once and feeds several targets:
 
 ```swift
 .codegen(
@@ -110,9 +110,9 @@ Some generators emit into several modules from one invocation, such as an Apollo
 )
 ```
 
-The consumers declare nothing about code generation. For each output, Tuist writes to `Derived/CodeGen/Producers/{producer}/{consumer}/Sources` in the consumer's project, attaches it to the consumer, and adds a dependency from the consumer on the `.codegen` target, so a change to the generator's inputs changes the hash of every consumer and of everything that depends on them. `.output(target:)` names a target in the same project; `.output(project:target:)` names one elsewhere. A target can have only one producer.
+The consumers declare nothing about code generation. The code generation target that produces a consumer's output is its producer. For each output, Tuist writes to `Derived/CodeGen/Producers/{producer}/{consumer}/Sources` in the consumer's project and attaches that directory to the consumer. Tuist also adds a dependency from the consumer on its producer. A change to the generator's inputs therefore changes the hash of every consumer and of everything that depends on them. Use `.output(target:)` for a target in the same project and `.output(project:target:)` for one elsewhere. A target can have only one producer.
 
-A multi-target generator receives the same environment as a per-target one, with `TUIST_OUTPUTS_FILE` in place of `TUIST_OUTPUT_SOURCES_DIR`. It points at a JSON array with one entry per output:
+A code generation target's script receives the same environment as a per-target generator, with `TUIST_OUTPUTS_FILE` in place of `TUIST_OUTPUT_SOURCES_DIR`. It points at a JSON array with one entry per output:
 
 ```json
 [
@@ -121,7 +121,7 @@ A multi-target generator receives the same environment as a per-target one, with
 ]
 ```
 
-Look outputs up by `project` and `target` rather than by position. The `.codegen` target generates as an aggregate target that builds nothing; all its outputs are produced, or skipped, together.
+Look outputs up by `project` and `target` rather than by position. Tuist generates a code generation target as an aggregate target that builds nothing, and produces or skips all its outputs together.
 
 ## Limitations {#limitations}
 
@@ -132,4 +132,4 @@ Look outputs up by `project` and `target` rather than by position. The `.codegen
 
 ## Relationship to synthesized files {#relationship-to-synthesized-files}
 
-[Synthesized files](/guides/features/projects/synthesized-files) such as resource accessors stay as they are: they need no external tool, and their templates are maintained by Tuist. Prefer them where they fit, and use a code generator for file types or tools they don't cover.
+[Synthesized files](/guides/features/projects/synthesized-files) such as resource accessors need no external tool, and Tuist maintains their templates. Prefer them where they fit, and use a code generator for file types or tools they don't cover.

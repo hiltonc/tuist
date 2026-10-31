@@ -11,16 +11,17 @@ import TuistSupport
 import XcodeGraph
 
 enum CodeGeneratorMaterializerError: FatalError, Equatable {
-    case generatorFailed(generator: String, target: String, exitCode: Int32, standardError: String)
+    case generatorFailed(generator: String, target: String, exitCode: Int32, standardOutput: String, standardError: String)
 
     var type: ErrorType { .abort }
 
     var description: String {
         switch self {
-        case let .generatorFailed(generator, target, exitCode, standardError):
-            let trimmed = standardError.trimmingCharacters(in: .whitespacesAndNewlines)
-            return "The code generator '\(generator)' of target '\(target)' exited with status \(exitCode)."
-                + (trimmed.isEmpty ? "" : "\n\(trimmed)")
+        case let .generatorFailed(generator, target, exitCode, standardOutput, standardError):
+            (["The code generator '\(generator)' of target '\(target)' exited with status \(exitCode)."]
+                + [standardOutput, standardError].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty })
+                .joined(separator: "\n")
         }
     }
 }
@@ -33,15 +34,11 @@ public protocol CodeGeneratorMaterializing {
 
 /// Runs code generators and moves their output into place.
 ///
-/// Materialization is a phase a command requests: `generate`, `build`, and `test` run it on the graph left after
-/// focus, tree-shaking, and cache substitution, so a pruned or cache-hit target never runs its generator. Commands
-/// that only hash or inspect the graph never run it.
+/// `generate`, `build`, and `test` run it on the graph left after focus, tree-shaking, and cache substitution, so a
+/// pruned or cache-hit target never runs its generator; commands that only hash or inspect the graph never run it.
 ///
-/// Each action records its hash under `Derived/CodeGen/State/`. An action is skipped when the recorded hash matches
-/// and every output directory exists. Otherwise the generator writes into fresh staging directories, and once it
-/// exits zero Tuist deletes the recorded hash, moves each staging directory into place, and writes the new hash. The
-/// hash is absent while the output directories are inconsistent, so a crash during the swap makes the next run
-/// regenerate.
+/// The recorded action hash is deleted before the output swap and written after it, so a crash mid-swap makes the next
+/// run regenerate.
 public struct CodeGeneratorMaterializer: CodeGeneratorMaterializing {
     static let stagingDirectoryName = ".staging"
 
@@ -67,7 +64,6 @@ public struct CodeGeneratorMaterializer: CodeGeneratorMaterializing {
             project.targets.values.sorted().flatMap { CodeGeneratorAction.actions(for: $0, projectPath: projectPath) }
         }
         .filter { action in
-            // A multi-target action runs as a whole, as long as any of its consumers is still part of the graph.
             !action.isMultiTarget || action.outputs.contains { graph.projects[$0.projectPath]?.targets[$0.target] != nil }
         }
         guard !actions.isEmpty else { return }
@@ -161,22 +157,35 @@ public struct CodeGeneratorMaterializer: CodeGeneratorMaterializing {
             outputSourcesDirectory: action.isMultiTarget ? nil : stagingDirectories.first,
             outputsFile: outputsFile
         )
+        var standardOutput = ""
+        var standardError = ""
         do {
-            let output = try await commandRunner.runAndCollectOutput(
+            for try await event in commandRunner.run(
                 arguments: ["/bin/sh", "-c", action.generator.script],
                 environment: environment,
                 workingDirectory: action.projectPath
-            )
-            if !output.standardOutput.isEmpty {
-                Logger.current.debug("\(output.standardOutput)")
+            ) {
+                switch event.pipeline {
+                case .standardOutput: standardOutput += event.string() ?? ""
+                case .standardError: standardError += event.string() ?? ""
+                }
             }
-        } catch let CommandError.terminated(exitCode, standardError, _) {
+        } catch let CommandError.terminated(exitCode, _, _) {
             throw CodeGeneratorMaterializerError.generatorFailed(
                 generator: action.generator.name,
                 target: action.targetName,
                 exitCode: exitCode,
+                standardOutput: standardOutput,
                 standardError: standardError
             )
+        }
+        if !standardOutput.isEmpty {
+            Logger.current.debug("\(standardOutput)")
+        }
+        let trimmedStandardError = standardError.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedStandardError.isEmpty {
+            AlertController.current
+                .warning(.alert("The code generator \(label) wrote to standard error:\n\(trimmedStandardError)"))
         }
 
         for (output, stagingDirectory) in zip(action.outputs, stagingDirectories) {
