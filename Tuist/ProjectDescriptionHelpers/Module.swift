@@ -31,6 +31,7 @@ public enum Module: String, CaseIterable {
     case rosalind = "Rosalind"
     case oidc = "TuistOIDC"
     case hasher = "TuistHasher"
+    case codeGen = "TuistCodeGen"
     case cache = "TuistCache"
     case simulator = "TuistSimulator"
     case xcActivityLog = "TuistXCActivityLog"
@@ -573,7 +574,7 @@ public enum Module: String, CaseIterable {
              .swifterPMCore,
              .constants, .environment, .logging, .userInputReader, .config:
             moduleTags.append("domain:foundation")
-        case .generator, .hasher, .cache:
+        case .generator, .hasher, .cache, .codeGen:
             moduleTags.append("domain:generation")
         case .loader, .scaffold:
             moduleTags.append("domain:project-loading")
@@ -854,6 +855,7 @@ public enum Module: String, CaseIterable {
                     .target(name: Module.config.targetName),
                     .target(name: Module.core.targetName),
                     .target(name: Module.jobSummary.targetName),
+                    .target(name: Module.codeGen.targetName),
                     .target(name: Module.hasher.targetName),
                     .target(name: Module.support.targetName),
                     .target(name: Module.xcodeBuildProducts.targetName),
@@ -1088,6 +1090,19 @@ public enum Module: String, CaseIterable {
                     .target(name: Module.rosalind.targetName, condition: .when([.macos])),
                     .external(name: "KeychainAccess"),
                     .external(name: "Crypto"),
+                ]
+            case .codeGen:
+                [
+                    .target(name: Module.alert.targetName),
+                    .target(name: Module.constants.targetName),
+                    .target(name: Module.core.targetName),
+                    .target(name: Module.hasher.targetName),
+                    .target(name: Module.logging.targetName),
+                    .target(name: Module.support.targetName),
+                    .target(name: Module.xcodeGraph.targetName),
+                    .target(name: "TuistProcess"),
+                    .external(name: "FileSystem"),
+                    .external(name: "Mockable"),
                 ]
             case .hasher:
                 [
@@ -1971,6 +1986,7 @@ public enum Module: String, CaseIterable {
                     .target(name: Module.plugin.targetName),
                     .target(name: Module.git.targetName),
                     .target(name: Module.rootDirectoryLocator.targetName),
+                    .target(name: Module.codeGen.targetName),
                     .target(name: Module.hasher.targetName),
                     .target(name: Module.xcActivityLog.targetName),
                     .target(name: Module.ci.targetName, condition: .when([.macos])),
@@ -2159,6 +2175,19 @@ public enum Module: String, CaseIterable {
                     .external(name: "FileSystemTesting"),
                     .external(name: "SwiftToolsSupport"),
                     .target(name: "TuistProcess"),
+                ]
+            case .codeGen:
+                [
+                    .target(name: Module.alert.targetName),
+                    .target(name: Module.core.targetName),
+                    .target(name: Module.hasher.targetName),
+                    .target(name: Module.support.targetName),
+                    .target(name: Module.testing.targetName),
+                    .target(name: Module.xcodeGraph.targetName),
+                    .target(name: "TuistProcess"),
+                    .external(name: "FileSystem"),
+                    .external(name: "FileSystemTesting"),
+                    .external(name: "Mockable"),
                 ]
             case .hasher:
                 [

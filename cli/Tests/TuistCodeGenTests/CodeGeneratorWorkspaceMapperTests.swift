@@ -4,8 +4,8 @@ import Foundation
 import Path
 import Testing
 import XcodeGraph
+@testable import TuistCodeGen
 @testable import TuistCore
-@testable import TuistGenerator
 @testable import TuistTesting
 
 struct CodeGeneratorWorkspaceMapperTests {
@@ -121,6 +121,52 @@ struct CodeGeneratorWorkspaceMapperTests {
             guard case let CodeGeneratorWorkspaceMapperError.invalidDeclarations(issues) = error else { return false }
             return issues.contains { $0.contains("'Missing', which isn't a target") }
                 && issues.contains { $0.contains("claimed by more than one code generation output") }
+        }
+    }
+
+    @Test(arguments: [
+        "consumer is a code generation target",
+        "consumer outside the workspace",
+        "consumer resolved by a package manager",
+        "names differ only by Unicode normalization",
+    ])
+    func map_rejects_invalid_declarations(scenario: String) async throws {
+        let producer = { (outputs: [CodeGenerator.Output]) in
+            Target.test(name: "GQLCodegen", product: .staticLibrary, codegen: generator(name: "GQLCodegen", outputs: outputs))
+        }
+        let projects: [Project]
+        let expectedIssue: String
+        switch scenario {
+        case "consumer is a code generation target":
+            let other = Target.test(name: "OtherCodegen", product: .staticLibrary, codegen: generator(name: "OtherCodegen"))
+            projects = [.test(path: core, targets: [producer([.init(projectPath: core, target: "OtherCodegen")]), other])]
+            expectedIssue = "The code generation target 'GQLCodegen' declares an output for 'OtherCodegen', which is itself a code generation target."
+        case "consumer outside the workspace":
+            let outside = root.appending(components: "Projects", "Outside")
+            projects = [.test(path: core, targets: [producer([.init(projectPath: outside, target: "GQLSchema")])])]
+            expectedIssue = "The code generation target 'GQLCodegen' declares an output for 'GQLSchema' in a project at \(outside.pathString) that isn't part of the workspace."
+        case "consumer resolved by a package manager":
+            let package = root.appending(components: "Tuist", ".build", "checkouts", "Package")
+            projects = [
+                .test(path: core, targets: [producer([.init(projectPath: package, target: "Package")])]),
+                .test(path: package, targets: [.test(name: "Package", product: .staticFramework)], type: .external(hash: nil)),
+            ]
+            expectedIssue = "The code generation target 'GQLCodegen' declares an output for 'Package', which is resolved by a package manager."
+        default:
+            let target = Target.test(
+                name: "AccountUI",
+                product: .staticFramework,
+                codeGenerators: [generator(name: "r\u{E9}sum\u{E9}"), generator(name: "re\u{301}sume\u{301}")]
+            )
+            projects = [.test(path: core, targets: [target])]
+            expectedIssue = "The code generator names 're\u{301}sume\u{301}', 'r\u{E9}sum\u{E9}' in target 'AccountUI' differ only by case or Unicode normalization, so their output would share a directory."
+        }
+
+        await #expect {
+            try await subject.map(workspace: workspace(projects))
+        } throws: { error in
+            guard case let CodeGeneratorWorkspaceMapperError.invalidDeclarations(issues) = error else { return false }
+            return issues.contains(expectedIssue)
         }
     }
 

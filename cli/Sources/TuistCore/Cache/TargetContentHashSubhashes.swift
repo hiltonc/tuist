@@ -47,7 +47,7 @@ public struct TargetContentHashSubhashes: Codable, Hashable, Sendable {
     public let destinations: [String]?
     /// Hash of the foreign build script and its inputs, when present.
     public let foreignBuild: String?
-    /// Hash of the target's code generator declarations and their inputs, when present. Never of their output.
+    /// Hash of the target's code generator declarations and their inputs, when present.
     public let codeGenerators: String?
     /// Device name and runtime included when hashing UI tests.
     public let testDevice: String?

@@ -213,7 +213,6 @@ struct StaticProductsGraphLinter: StaticProductsGraphLinting {
             case .plugin: return false
             }
         case .target:
-            // A code generation target links into nothing.
             guard let target, target.target.codegen == nil else { return false }
             return target.target.product.isStatic
         case .sdk, .macro:

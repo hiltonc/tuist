@@ -9,7 +9,8 @@ import ProjectDescription
 ///   - `.folder("Sources/AccountUI/Resources")` is manifest-relative, the target's own
 ///     input, which per-target scoping exists for.
 ///   - `.file("//templates/Assets.stencil")` is a repo-ROOT shared input. Written without
-///     `//` it would resolve under Projects/DesignSystem/ and the generator would fail.
+///     `//` it would resolve under Projects/DesignSystem/ and Tuist would reject it as a
+///     missing input.
 ///
 /// The template is also the case the built-in cannot hash: `.assets()` compiles its
 /// template into the CLI, so a template edit ships with a CLI upgrade and never moves a

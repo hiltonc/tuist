@@ -3,6 +3,7 @@ import Foundation
 import Mockable
 import Path
 import ProjectDescription
+import TuistCodeGen
 import TuistConfig
 import TuistConfigLoader
 import TuistCore
@@ -89,8 +90,6 @@ public class Generator: Generating {
         // Mapper side effects
         try await sideEffectDescriptorExecutor.execute(sideEffects: sideEffects)
 
-        // Code generators run after the project is written, on the graph left after focus, tree-shaking, and cache
-        // substitution. Their output folders are attached by path, so the project doesn't depend on their contents.
         try await codeGeneratorMaterializer.materialize(graph: graph)
 
         // Post Generate Actions

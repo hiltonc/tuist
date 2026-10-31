@@ -1,5 +1,6 @@
 import Foundation
 import TSCUtility
+import TuistCodeGen
 import TuistConfig
 import TuistCore
 import TuistDependencies

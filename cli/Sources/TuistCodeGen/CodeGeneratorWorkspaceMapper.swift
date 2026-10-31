@@ -20,17 +20,9 @@ public enum CodeGeneratorWorkspaceMapperError: FatalError, Equatable {
     }
 }
 
-/// Attaches code generator output to the targets that consume it.
-///
-/// For every generator, it attaches each output directory to its consumer as a buildable folder marked as generated.
-/// For a code generation target, it also adds a dependency from each consumer on the producer to the consumer's
-/// `dependencies`, so the build orders generation first and the content hasher, which walks a target's declared
-/// dependencies, moves the consumer's hash with the producer's.
-///
-/// It runs before the graph is loaded, once every project exists as a model, because a producer can name a consumer
-/// in another project. Generation itself is deferred to the materialization phase that `generate`, `build`, and
-/// `test` run, so mapping never executes a generator. It also returns side effects that delete output and state no
-/// declaration accounts for any longer.
+/// Attaches code generator output to its consumers as generated buildable folders, and makes each consumer of a code
+/// generation target depend on it so the content hasher, which walks declared dependencies, moves the consumer's hash
+/// with the producer's.
 public struct CodeGeneratorWorkspaceMapper: WorkspaceMapping {
     private let fileSystem: FileSysteming
 
@@ -40,10 +32,9 @@ public struct CodeGeneratorWorkspaceMapper: WorkspaceMapping {
 
     public func map(workspace: WorkspaceWithProjects) async throws -> (WorkspaceWithProjects, [SideEffectDescriptor]) {
         var workspace = workspace
-        // Names become path components, so they're validated before any output path is derived from them.
-        try validateNames(projects: workspace.projects)
+        try validatePathComponents(projects: workspace.projects)
         let declaringProjects = workspace.projects.filter { project in
-            project.targets.values.contains { !$0.codeGenerators.isEmpty || $0.codegen != nil }
+            project.targets.values.contains(where: \.declaresCodeGeneration)
         }
         let sideEffects = try await staleOutputDeletions(projects: workspace.projects)
         guard !declaringProjects.isEmpty else { return (workspace, sideEffects) }
@@ -83,7 +74,6 @@ public struct CodeGeneratorWorkspaceMapper: WorkspaceMapping {
                 workspace.projects[projectIndex].targets[output.target] = consumer
             }
 
-            // A code generation target builds nothing, so it supports whatever its consumers do.
             if action.isMultiTarget, let projectIndex = projectIndices[action.projectPath] {
                 let consumerDestinations = action.outputs.reduce(into: Destinations()) { destinations, output in
                     guard let index = projectIndices[output.projectPath],
@@ -101,7 +91,7 @@ public struct CodeGeneratorWorkspaceMapper: WorkspaceMapping {
 
     // MARK: - Validation
 
-    private func validateNames(projects: [Project]) throws {
+    private func validatePathComponents(projects: [Project]) throws {
         let outputs = projects.flatMap { project in
             project.targets.values.compactMap(\.codegen).flatMap(\.outputs)
         }
@@ -115,9 +105,7 @@ public struct CodeGeneratorWorkspaceMapper: WorkspaceMapping {
         for project in projects {
             let consumers = Set(outputs.filter { $0.projectPath == project.path }.map(\.target))
             let participatingNames = Set(
-                project.targets.values
-                    .filter { !$0.codeGenerators.isEmpty || $0.codegen != nil }
-                    .map(\.name)
+                project.targets.values.filter(\.declaresCodeGeneration).map(\.name)
             ).union(consumers)
             issues += pathComponentIssues(
                 names: participatingNames.sorted(),
@@ -135,7 +123,6 @@ public struct CodeGeneratorWorkspaceMapper: WorkspaceMapping {
         guard issues.isEmpty else { throw CodeGeneratorWorkspaceMapperError.invalidDeclarations(issues) }
     }
 
-    // swiftlint:disable:next function_body_length
     private func validate(actions: [CodeGeneratorAction], projects: [Project]) throws {
         var issues: [String] = []
         let projectsByPath = Dictionary(projects.map { ($0.path, $0) }, uniquingKeysWith: { first, _ in first })
@@ -143,7 +130,7 @@ public struct CodeGeneratorWorkspaceMapper: WorkspaceMapping {
         for project in projects {
             for target in project.targets.values.sorted()
                 where (target.type == .remote || project.type != .local)
-                && (!target.codeGenerators.isEmpty || target.codegen != nil)
+                && target.declaresCodeGeneration
             {
                 issues.append("The target '\(target.name)' is resolved by a package manager and can't declare code generators.")
             }
@@ -190,8 +177,8 @@ public struct CodeGeneratorWorkspaceMapper: WorkspaceMapping {
         guard issues.isEmpty else { throw CodeGeneratorWorkspaceMapperError.invalidDeclarations(issues) }
     }
 
-    /// Rejects names that can't be a single path component, and names that would share a directory on a
-    /// case-insensitive, normalization-insensitive file system such as APFS.
+    /// Rejects names that can't be one path component, or that would share a directory on a case- and
+    /// normalization-insensitive file system such as APFS.
     private func pathComponentIssues(names: [String], kind: String, scope: String) -> [String] {
         var issues: [String] = []
         var namesByKey = [String: [String]]()
@@ -209,8 +196,7 @@ public struct CodeGeneratorWorkspaceMapper: WorkspaceMapping {
         return issues
     }
 
-    /// Rejects inputs and outputs that overlap in either direction. Input resolution never descends into `Derived`,
-    /// so only a path that names generated output, or a directory inside `Derived`, can overlap.
+    /// Rejects inputs and outputs that overlap in either direction.
     private func overlapIssues(actions: [CodeGeneratorAction]) -> [String] {
         let outputs = actions.flatMap(\.outputs).map(\.directory).map(canonical)
         var issues: [String] = []
@@ -247,9 +233,7 @@ public struct CodeGeneratorWorkspaceMapper: WorkspaceMapping {
 
     // MARK: - Pruning
 
-    /// Output and state directories under `Derived/CodeGen` are preserved across generations, so ones no longer
-    /// matching a declaration are deleted. Otherwise a deleted generator's output would be attached and compiled
-    /// again if its name were reused.
+    /// Deletes output and state no declaration owns.
     private func staleOutputDeletions(projects: [Project]) async throws -> [SideEffectDescriptor] {
         let actions = projects.flatMap { project in
             project.targets.values.flatMap { CodeGeneratorAction.actions(for: $0, projectPath: project.path) }
@@ -304,6 +288,10 @@ public struct CodeGeneratorWorkspaceMapper: WorkspaceMapping {
 }
 
 extension Target {
+    fileprivate var declaresCodeGeneration: Bool {
+        !codeGenerators.isEmpty || codegen != nil
+    }
+
     fileprivate func declaresDependency(
         on producer: String,
         in producerProjectPath: AbsolutePath,

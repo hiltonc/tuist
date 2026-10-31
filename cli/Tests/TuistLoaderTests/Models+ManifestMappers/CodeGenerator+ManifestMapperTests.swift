@@ -71,4 +71,38 @@ struct CodeGeneratorManifestMapperTests {
             .init(projectPath: "/Repository/Projects/Networking", target: "GQLTransport"),
         ])
     }
+
+    @Test
+    func from_keeps_inputs_outside_the_repository_absolute_at_any_checkout_depth() throws {
+        let deep = GeneratorPaths(
+            manifestDirectory: try AbsolutePath(validating: "/Users/me/src/Repository/Projects/DesignSystem"),
+            rootDirectory: try AbsolutePath(validating: "/Users/me/src/Repository")
+        )
+        let inputs: [(ProjectDescription.CodeGenerator.Input, GeneratorPaths)] = [
+            (.file("/opt/homebrew/share/Assets.stencil"), generatorPaths),
+            (.file("/opt/homebrew/share/Assets.stencil"), deep),
+            (.file("../../../opt/homebrew/share/Assets.stencil"), generatorPaths),
+        ]
+
+        let mapped = try inputs.map { try XcodeGraph.CodeGenerator.Input.from(manifest: $0, generatorPaths: $1) }
+
+        let expected = XcodeGraph.CodeGenerator.Input.file(.init(
+            anchor: .absolute,
+            anchorDirectory: "/",
+            relativePath: "opt/homebrew/share/Assets.stencil"
+        ))
+        #expect(mapped == [expected, expected, expected])
+        if case let .file(path) = expected {
+            #expect(path.logicalPath == "/opt/homebrew/share/Assets.stencil")
+        }
+    }
+
+    @Test(arguments: [
+        ("GQLCodegen", "tuist.codegen.GQLCodegen"),
+        ("GQL_Codegen", "tuist.codegen.GQL-Codegen"),
+        ("Gen.Code \u{E9}", "tuist.codegen.Gen-Code--"),
+    ])
+    func codegen_derives_a_valid_bundle_identifier_from_the_name(name: String, bundleId: String) {
+        #expect(ProjectDescription.Target.codegen(name: name, script: "exit 0", outputs: []).bundleId == bundleId)
+    }
 }

@@ -14,7 +14,7 @@
 # in each script's header: the directory handed over is not its final location.
 #
 # It also exists out of necessity. Generated output cannot be committed, since `**/Derived/`
-# is gitignored and codegen output lives under `Derived/CodeGen/`. A fresh clone therefore
+# is gitignored and generated output lives under `Derived/CodeGen/`. A fresh clone therefore
 # has no generated files, which is the state the design has to work from and the reason the
 # action hash comes from the declaration rather than from output bytes.
 set -e
@@ -61,15 +61,13 @@ env \
     STRINGS_ACCESS_LEVEL="public" \
     "$ROOT/Codegen/strings.sh"
 
-# ── Multi-target: one Apollo run feeding GQLSchema and GQLTypes ──────────────────────────
+# ── Code generation target: one Apollo run feeding GQLSchema and GQLTypes ──────────────────────────
 GQL_OUT="$ROOT/Projects/Core/Derived/CodeGen/Producers/GQLCodegen"
 mkdir -p "$GQL_OUT/GQLSchema/Sources" "$GQL_OUT/GQLTypes/Sources"
 
-# `.glob("//Projects/**/*.graphql")` arrives pre-expanded to one `.file` entry per match,
-# which Tuist does at manifest-map time.
-# `-not -path '*/Derived/*'` because Tuist expands the glob against declared sources, never
-# against generated output. Without it, a generator emitting a `.graphql` would feed its own
-# output back into the hash of the run that produced it, which is the overlap the RFC forbids.
+# `.glob("//Projects/**/*.graphql")` arrives expanded to one `file` entry per match.
+# `-not -path '*/Derived/*'` because Tuist never expands a glob into `Derived`, so a
+# generator emitting a `.graphql` can't feed its own output back into its hash.
 set -- "file:$ROOT/Codegen/schema.graphqls"
 for OP in $(find "$ROOT/Projects" -name '*.graphql' -not -path '*/Derived/*' | sort); do
     set -- "$@" "file:$OP"

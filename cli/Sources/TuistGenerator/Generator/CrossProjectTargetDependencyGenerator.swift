@@ -6,7 +6,7 @@ import XcodeProj
 
 /// Wires cross-project target dependencies and producer-linked product references.
 ///
-/// Foreign build and code generation aggregates produce no product that Xcode can use for implicit dependency discovery.
+/// Aggregate targets produce no product that Xcode can use for implicit dependency discovery.
 /// Swift macro implementations need an explicit target edge so Xcode can discover and propagate their
 /// native macro metadata.
 ///

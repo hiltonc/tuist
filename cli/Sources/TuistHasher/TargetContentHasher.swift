@@ -106,7 +106,7 @@ public struct TargetContentHasher: TargetContentHashing { // swiftlint:disable:t
         dependenciesContentHasher: DependenciesContentHashing,
         foreignBuildHasher: ForeignBuildHashing,
         additionalHashingInputsHasher: AdditionalHashingInputsHashing,
-        codeGeneratorActionHasher: CodeGeneratorActionHashing? = nil
+        codeGeneratorActionHasher: CodeGeneratorActionHashing
     ) {
         self.contentHasher = contentHasher
         self.sourceFilesContentHasher = sourceFilesContentHasher
@@ -121,7 +121,7 @@ public struct TargetContentHasher: TargetContentHashing { // swiftlint:disable:t
         self.dependenciesContentHasher = dependenciesContentHasher
         self.foreignBuildHasher = foreignBuildHasher
         self.additionalHashingInputsHasher = additionalHashingInputsHasher
-        self.codeGeneratorActionHasher = codeGeneratorActionHasher ?? CodeGeneratorActionHasher(contentHasher: contentHasher)
+        self.codeGeneratorActionHasher = codeGeneratorActionHasher
     }
 
     // MARK: - TargetContentHashing
@@ -239,8 +239,6 @@ public struct TargetContentHasher: TargetContentHashing { // swiftlint:disable:t
             }
 
         let hashingFilesFilter = HashingFilesFilter()
-        // A generated folder's contents are covered by the generator's action hash instead, so the hash doesn't
-        // depend on whether the generator has run.
         let buildableFolderHashes = try await graphTarget.target
             .buildableFolders.filter { !$0.isCodeGeneratorOutput }.sorted(by: { $0.path < $1.path })
             .map { buildableFolder in

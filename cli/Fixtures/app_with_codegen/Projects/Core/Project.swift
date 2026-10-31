@@ -1,17 +1,16 @@
 import ProjectDescription
 
-/// A MULTI-TARGET generator, declared as a product-less `.codegen` target. One Apollo run
+/// A code generation target, declared with `.codegen`. One Apollo run
 /// whose output is source for two targets, because a per-target split would reparse the
 /// whole schema and rescan every `.graphql` file once per module.
 ///
 /// Path semantics matter more here than in DesignSystem, because both inputs live outside
 /// this project. A bare string is manifest-relative, so "Codegen/schema.graphqls" would
-/// resolve to Projects/Core/Codegen/schema.graphqls and match nothing, and for the glob
-/// that failure only warns.
+/// resolve to Projects/Core/Codegen/schema.graphqls, which Tuist rejects as a missing input,
+/// and the glob would match nothing, which Tuist only warns about.
 let project = Project(
     name: "Core",
     targets: [
-        // Product-less aggregate: one run, two consumers, nothing linked.
         .codegen(
             name: "GQLCodegen",
             // `exec` for the same reason as in DesignSystem. The script reads
@@ -42,7 +41,7 @@ let project = Project(
             ]
         ),
 
-        // Consumers declare nothing about codegen: not the output path, not the
+        // Consumers declare nothing about code generation: not the output path, not the
         // dependency on GQLCodegen. Tuist derives the path, attaches the buildable
         // folder, and injects the edge into `target.dependencies` so the content hasher
         // sees it.
