@@ -6,6 +6,8 @@ import Testing
 import TuistAlert
 import TuistCore
 import TuistHasher
+import TuistLoggerTesting
+import TuistLogging
 import TuistTesting
 import XcodeGraph
 @testable import TuistCodeGen
@@ -50,8 +52,10 @@ struct CodeGeneratorMaterializerTests {
         let graph = graph(project: project, codeGenerators: [generator])
 
         try await subject.materialize(graph: graph)
+        #expect(!Logger.testingLogHandler.collected[.notice, ==].contains("up to date"))
         try await subject.materialize(graph: graph)
         #expect(try await runs(counter) == 1)
+        #expect(Logger.testingLogHandler.collected[.notice, ==].contains("1 code generator up to date"))
 
         try await fileSystem.writeText(
             #"{"key": "changed"}"#,
@@ -60,6 +64,23 @@ struct CodeGeneratorMaterializerTests {
         )
         try await subject.materialize(graph: graph)
         #expect(try await runs(counter) == 2)
+    }
+
+    @Test(.inTemporaryDirectory, .withMockedLogger())
+    func materialize_summarizes_skipped_generators_in_one_notice() async throws {
+        let root = try #require(FileSystem.temporaryTestDirectory)
+        let project = try await makeProject(root: root)
+        let generators = ["first", "second"].map { name in
+            CodeGenerator(name: name, script: #"touch "$TUIST_OUTPUT_SOURCES_DIR/A.swift""#, inputs: [], rootDirectory: root)
+        }
+        let graph = graph(project: project, codeGenerators: generators)
+        try await subject.materialize(graph: graph)
+
+        try await subject.materialize(graph: graph)
+
+        let notices = Logger.testingLogHandler.collected[.notice, ==]
+        #expect(notices.contains("2 code generators up to date"))
+        #expect(!notices.contains("Skipping"))
     }
 
     @Test(.inTemporaryDirectory, .withMockedLogger())
