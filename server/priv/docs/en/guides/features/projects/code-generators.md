@@ -56,7 +56,7 @@ A generator reading only the files listed in `TUIST_INPUTS_FILE` guarantees that
 
 ## Inputs and hashing {#inputs-and-hashing}
 
-Tuist never hashes generated output. It hashes the generator's declaration instead, so `tuist hash`, `tuist graph`, and `tuist inspect` don't run any generator and give the same answer whether output exists or not. The hash covers:
+Tuist never hashes generated output. It hashes the generator's declaration instead, so `tuist hash` and `tuist graph` don't run any generator and give the same answer whether output exists or not. The hash covers:
 
 - the command, the generator's name, and the target that declares it
 - the values declared in `environment`
@@ -89,6 +89,8 @@ Tuist records each generator's hash under `Derived/CodeGen/State`. A generator i
 - a run interrupted while output is being replaced runs again next time
 
 Tuist warns when a generator produces no files. On the next `tuist generate`, Tuist deletes output and state for generators or targets that no longer exist.
+
+`tuist inspect dependencies` doesn't run generators either, but it scans the output the last run left as part of each target's sources, so an import that appears only in generated code counts. When a target's output doesn't exist yet, it warns that the output wasn't inspected; run `tuist generate` first.
 
 ## Code generation targets {#code-generation-targets}
 
