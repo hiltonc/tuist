@@ -92,7 +92,7 @@ Tuist warns when a generator produces no files. On the next `tuist generate`, Tu
 
 Generators run concurrently, including several instances of the same script for different targets. A script must therefore be safe to run alongside other instances of itself. One that builds its own tool on first use, for example, must hold a lock while it builds, or the tool must be built before Tuist runs.
 
-`tuist inspect dependencies` doesn't run generators either, but it scans the output the last run left as part of each target's sources, so an import that appears only in generated code counts. When a target's output doesn't exist yet, it warns that the output wasn't inspected; run `tuist generate` first.
+Like `tuist hash`, `tuist inspect dependencies` doesn't run generators. It scans the output the last run left as part of each target's sources, so an import that appears only in generated code counts. When a target's output doesn't exist yet, it warns that the output wasn't inspected; run `tuist generate` first.
 
 ## Code generation targets {#code-generation-targets}
 
