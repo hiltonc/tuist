@@ -90,7 +90,9 @@ Tuist records each generator's hash under `Derived/CodeGen/State`. A generator i
 
 Tuist warns when a generator produces no files. On the next `tuist generate`, Tuist deletes output and state for generators or targets that no longer exist.
 
-`tuist inspect dependencies` doesn't run generators either, but it scans the output the last run left as part of each target's sources, so an import that appears only in generated code counts. When a target's output doesn't exist yet, it warns that the output wasn't inspected; run `tuist generate` first.
+Generators run concurrently, including several instances of the same script for different targets. A script must therefore be safe to run alongside other instances of itself. One that builds its own tool on first use, for example, must hold a lock while it builds, or the tool must be built before Tuist runs.
+
+Like `tuist hash`, `tuist inspect dependencies` doesn't run generators. It scans the output the last run left as part of each target's sources, so an import that appears only in generated code counts. When a target's output doesn't exist yet, it warns that the output wasn't inspected; run `tuist generate` first.
 
 ## Code generation targets {#code-generation-targets}
 
@@ -125,10 +127,19 @@ A code generation target's script receives the same environment as a per-target 
 
 Look outputs up by `project` and `target` rather than by position. Tuist generates a code generation target as an aggregate target that builds nothing, and produces or skips all its outputs together.
 
+## One input split across targets {#one-input-split-across-targets}
+
+Sometimes one input is split across many targets by per-target configuration. For example, a single `en.json` might be divided among feature modules by key globs in each module's configuration file, with one module's `**` catching the rest. Every target's output then depends on every target's configuration, since changing one module's globs can move keys into or out of any other. This can be declared in two forms:
+
+- A per-target generator on each consumer that declares the shared input and all the configuration files, ideally through one `.glob` such as `.glob("//Projects/*/strings.yml")`, so a new module is picked up without editing the others.
+- One code generation target whose `outputs` list every consumer, and whose script reads the input and configuration once and writes each target's share.
+
+Prefer the code generation target. Per-target generators keep the consumers independent of each other, but because each one declares every configuration file, any edit reruns all of them. A code generation target runs once per change, but every consumer depends on it.
+
 ## Limitations {#limitations}
 
 - A generator's output contributes sources only.
-- One generator can't consume another's output; the order in which generators run is unspecified.
+- One generator can't consume another's output; the order in which generators run is unspecified, and they can run at the same time.
 - Targets resolved by a package manager can't declare or consume generators.
 - Nothing sandboxes a generator, so it can read and write outside its declared inputs and output.
 
