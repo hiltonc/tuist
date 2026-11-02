@@ -82,7 +82,7 @@ An input can't overlap an output directory in either direction.
 
 Tuist runs generators during `tuist generate`, `tuist build`, and `tuist test`, after focus, tree-shaking, and binary cache substitution. A target that's excluded or replaced by a cached binary doesn't run its generators. Tuist writes the project first and attaches output folders by path, so Xcode picks up their contents once the generators finish.
 
-Tuist records each generator's hash under `Derived/CodeGen/State`. A generator is skipped when the recorded hash matches and its output directories exist. Otherwise it writes into fresh staging directories, and once it exits zero, Tuist replaces the previous output and records the new hash. As a result:
+Tuist records each generator's hash under `Derived/CodeGen/State`. A generator is skipped when the recorded hash matches and its output directories exist, and Tuist reports how many it skipped, as in "16 code generators up to date". Otherwise it writes into fresh staging directories, and once it exits zero, Tuist replaces the previous output and records the new hash. As a result:
 
 - files a generator no longer produces disappear
 - a failed run keeps the previous output, and a non-zero exit fails the command
