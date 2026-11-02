@@ -74,18 +74,24 @@ public struct CodeGeneratorMaterializer: CodeGeneratorMaterializing {
         try await remove(stagingDirectories)
 
         Logger.current.notice("Running code generators", metadata: .section)
-        _ = try await actions.concurrentMap { action in
+        let skipped = try await actions.concurrentMap { action in
             try await materialize(action: action)
+        }
+        .filter { !$0 }
+        .count
+        if skipped > 0 {
+            Logger.current.notice("\(skipped) code generator\(skipped == 1 ? "" : "s") up to date")
         }
     }
 
-    private func materialize(action: CodeGeneratorAction) async throws {
+    /// Returns `false` when the generator was skipped as up to date.
+    private func materialize(action: CodeGeneratorAction) async throws -> Bool {
         let hash = try await actionHasher.hash(action: action)
         if try await isUpToDate(action: action, hash: hash) {
             Logger.current.debug(
                 "Skipping the code generator '\(action.generator.name)' of target '\(action.targetName)': its action hash is unchanged"
             )
-            return
+            return false
         }
 
         let identifier = UUID().uuidString
@@ -108,6 +114,7 @@ public struct CodeGeneratorMaterializer: CodeGeneratorMaterializing {
             throw error
         }
         try await remove(temporaryDirectories)
+        return true
     }
 
     // swiftlint:disable:next function_body_length
