@@ -101,8 +101,9 @@ public struct CodeGeneratorWorkspaceMapper: WorkspaceMapping {
             kind: "target name",
             scope: "a code generation output"
         ).filter { $0.contains("path component") }
+        let consumersByProject = Dictionary(grouping: outputs, by: \.projectPath)
         for project in projects {
-            let consumers = Set(outputs.filter { $0.projectPath == project.path }.map(\.target))
+            let consumers = Set((consumersByProject[project.path] ?? []).map(\.target))
             let participatingNames = Set(
                 project.targets.values.filter(\.declaresCodeGeneration).map(\.name)
             ).union(consumers)
@@ -196,8 +197,35 @@ public struct CodeGeneratorWorkspaceMapper: WorkspaceMapping {
     }
 
     /// Rejects inputs and outputs that overlap in either direction.
+    ///
+    /// Outputs and the directories that contain them are indexed once, so checking an input costs its depth rather than
+    /// a comparison against every output.
     private func overlapIssues(actions: [CodeGeneratorAction]) -> [String] {
-        let outputs = actions.flatMap(\.outputs).map(\.directory).map(canonical)
+        var canonicalPaths = [AbsolutePath: AbsolutePath]()
+        func canonicalPath(_ path: AbsolutePath) -> AbsolutePath {
+            if let cached = canonicalPaths[path] { return cached }
+            let resolved = canonical(path)
+            canonicalPaths[path] = resolved
+            return resolved
+        }
+
+        var outputs = Set<AbsolutePath>()
+        // Directories an output is at or under with no `Derived` component in between: a directory input at one of
+        // these would read that output.
+        var outputContainers = Set<AbsolutePath>()
+        for directory in actions.flatMap(\.outputs).map(\.directory) {
+            var container = canonicalPath(directory)
+            outputs.insert(container)
+            // Whether to keep climbing depends only on the directory reached, so one already indexed has had its
+            // ancestors indexed too.
+            while outputContainers.insert(container).inserted,
+                  container.basename != Constants.DerivedDirectory.name,
+                  !container.isRoot
+            {
+                container = container.parentDirectory
+            }
+        }
+
         var issues: [String] = []
         for action in actions {
             for input in action.generator.inputs {
@@ -210,12 +238,9 @@ public struct CodeGeneratorWorkspaceMapper: WorkspaceMapping {
                 case .script: continue
                 }
                 guard let absolutePath = try? declared.absolutePath else { continue }
-                let inputPath = canonical(absolutePath.upToLastNonGlob)
-                let overlaps = outputs.contains { output in
-                    inputPath.isDescendantOfOrEqual(to: output)
-                        || (isDirectory && output.isDescendantOfOrEqual(to: inputPath)
-                            && !output.relative(to: inputPath).components.contains(Constants.DerivedDirectory.name))
-                }
+                let inputPath = canonicalPath(absolutePath.upToLastNonGlob)
+                let overlaps = inputPath.ancestorsAndSelf.contains(where: outputs.contains)
+                    || (isDirectory && outputContainers.contains(inputPath))
                 if overlaps {
                     issues.append(
                         "The input '\(declared.logicalPath)' of the code generator '\(action.generator.name)' in target '\(action.targetName)' overlaps a code generator's output directory."
