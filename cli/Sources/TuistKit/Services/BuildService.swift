@@ -7,6 +7,7 @@ import TuistConfig
 import TuistConfigLoader
 import TuistCore
 import TuistEnvironment
+import TuistHasher
 import TuistLoader
 import TuistLogging
 import TuistServer
@@ -102,12 +103,15 @@ public struct BuildService {
                 options: config.project.generatedProject?.generationOptions
             ).1
         } else {
-            graph = try await generator.load(
-                path: path,
-                options: config.project.generatedProject?.generationOptions
-            )
-            if !generateOnly {
-                try await codeGeneratorMaterializer.materialize(graph: graph)
+            graph = try await CodeGeneratorScriptInputCache.scoped {
+                let graph = try await generator.load(
+                    path: path,
+                    options: config.project.generatedProject?.generationOptions
+                )
+                if !generateOnly {
+                    try await codeGeneratorMaterializer.materialize(graph: graph)
+                }
+                return graph
             }
         }
 

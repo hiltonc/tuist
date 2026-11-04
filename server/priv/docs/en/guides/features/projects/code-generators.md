@@ -69,7 +69,7 @@ Paths contribute as the manifest writes them: relative to the manifest's directo
 
 Tuist warns, rather than failing, when a glob matches nothing. The pattern still contributes to the hash, so it changes once the first match appears.
 
-The `environment` parameter names the variables the output depends on. Its values are added to the inherited environment and contribute to the hash; the rest of the environment, `PATH` included, doesn't. To capture which build of a tool ran, declare a `.script` input such as `.script("mise x -- swiftgen --version")`. Script inputs run from the project's directory with `TUIST_ROOT_DIR`, `TUIST_PROJECT_DIR`, `TUIST_TARGET_NAME`, and the declared environment set.
+The `environment` parameter names the variables the output depends on. Its values are added to the inherited environment and contribute to the hash; the rest of the environment, `PATH` included, doesn't. To capture which build of a tool ran, declare a `.script` input such as `.script("mise x -- swiftgen --version")`. Script inputs run from the repository root with `TUIST_ROOT_DIR` and the declared environment set. Nothing identifies the target or project, so the script and the declared environment determine the output, and within one `tuist generate`, `tuist build`, or `tuist test` Tuist runs each distinct pair once and reuses its output for every generator that declares it. Nothing is reused across invocations, so a script input still sees changes made since the last one.
 
 > [!IMPORTANT]
 > **Declare everything the output depends on**
@@ -82,11 +82,13 @@ An input can't overlap an output directory in either direction.
 
 Tuist runs generators during `tuist generate`, `tuist build`, and `tuist test`, after focus, tree-shaking, and binary cache substitution. A target that's excluded or replaced by a cached binary doesn't run its generators. Tuist writes the project first and attaches output folders by path, so Xcode picks up their contents once the generators finish.
 
-Tuist records each generator's hash under `Derived/CodeGen/State`. A generator is skipped when the recorded hash matches and its output directories exist, and Tuist reports how many it skipped, as in "16 code generators up to date". Otherwise it writes into fresh staging directories, and once it exits zero, Tuist replaces the previous output and records the new hash. As a result:
+Tuist records each generator's hash under `Derived/CodeGen/State`. A generator is skipped when the recorded hash matches and its output directories exist, and Tuist reports how many it skipped, as in "16 code generators up to date". Otherwise it writes into fresh staging directories, and once it exits zero, Tuist updates the previous output to match them and records the new hash. As a result:
 
+- a file whose contents and permissions are unchanged is left in place, keeping its modification date, so Xcode recompiles only what changed
+- a changed file is replaced atomically, and a new one is added
 - files a generator no longer produces disappear
 - a failed run keeps the previous output, and a non-zero exit fails the command
-- a run interrupted while output is being replaced runs again next time
+- a run interrupted while output is being updated runs again next time
 
 Tuist warns when a generator produces no files. On the next `tuist generate`, Tuist deletes output and state for generators or targets that no longer exist.
 
