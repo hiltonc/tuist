@@ -13,8 +13,6 @@ public protocol CodeGeneratorActionHashing: Sendable {
 }
 
 /// Hashes paths by their logical form, so two checkouts at different paths agree.
-///
-/// Inside ``CodeGeneratorScriptInputCache/scoped(_:)``, each distinct `.script` input runs once.
 public struct CodeGeneratorActionHasher: CodeGeneratorActionHashing {
     private static let version = "1"
 
