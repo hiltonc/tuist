@@ -298,7 +298,138 @@ struct CodeGeneratorMaterializerTests {
         }
     }
 
+    @Test(.inTemporaryDirectory, .withMockedLogger())
+    func materialize_leaves_every_file_in_place_when_a_rerun_produces_identical_output() async throws {
+        let root = try #require(FileSystem.temporaryTestDirectory)
+        let project = try await makeProject(root: root)
+        let counter = root.appending(component: "runs")
+        let generator = perTargetGenerator(root: root, script: """
+        echo run >> "\(counter.pathString)"
+        mkdir -p "$TUIST_OUTPUT_SOURCES_DIR/Nested"
+        echo "let a = 1" > "$TUIST_OUTPUT_SOURCES_DIR/A.swift"
+        echo "let b = 1" > "$TUIST_OUTPUT_SOURCES_DIR/Nested/B.swift"
+        """)
+        let graph = graph(project: project, codeGenerators: [generator])
+        try await subject.materialize(graph: graph)
+        let output = outputDirectory(project: project, generator: generator)
+        let files = [output.appending(component: "A.swift"), output.appending(components: "Nested", "B.swift")]
+        let before = try files.map(identity)
+
+        try await fileSystem.writeText(
+            #"{"key": "changed"}"#,
+            at: project.appending(components: "Strings", "en.json"),
+            options: Set([.overwrite])
+        )
+        try await subject.materialize(graph: graph)
+
+        #expect(try await runs(counter) == 2)
+        #expect(try files.map(identity) == before)
+    }
+
+    @Test(.inTemporaryDirectory, .withMockedLogger())
+    func materialize_replaces_changed_files_adds_new_ones_and_removes_stale_ones_without_touching_unchanged_ones(
+    ) async throws {
+        let root = try #require(FileSystem.temporaryTestDirectory)
+        let project = try await makeProject(root: root)
+        let strings = project.appending(components: "Strings", "en.json")
+        let generator = perTargetGenerator(root: root, script: """
+        echo "let same = 1" > "$TUIST_OUTPUT_SOURCES_DIR/Same.swift"
+        cp Strings/en.json "$TUIST_OUTPUT_SOURCES_DIR/Changed.swift"
+        if grep -q value Strings/en.json; then
+            touch "$TUIST_OUTPUT_SOURCES_DIR/Stale.swift"
+            mkdir -p "$TUIST_OUTPUT_SOURCES_DIR/StaleFolder"
+            touch "$TUIST_OUTPUT_SOURCES_DIR/StaleFolder/Inner.swift"
+        else
+            touch "$TUIST_OUTPUT_SOURCES_DIR/New.swift"
+        fi
+        """)
+        let graph = graph(project: project, codeGenerators: [generator])
+        try await subject.materialize(graph: graph)
+        let output = outputDirectory(project: project, generator: generator)
+        let same = try identity(output.appending(component: "Same.swift"))
+        let changed = try identity(output.appending(component: "Changed.swift"))
+
+        try await fileSystem.writeText(#"{"key": "edited"}"#, at: strings, options: Set([.overwrite]))
+        try await subject.materialize(graph: graph)
+
+        #expect(try await fileSystem.contentsOfDirectory(output).map(\.basename).sorted() == [
+            "Changed.swift", "New.swift", "Same.swift",
+        ])
+        #expect(try identity(output.appending(component: "Same.swift")) == same)
+        #expect(try identity(output.appending(component: "Changed.swift")).inode != changed.inode)
+        #expect(try await fileSystem.readTextFile(at: output.appending(component: "Changed.swift")) == #"{"key": "edited"}"#)
+        let staging = CodeGeneratorLayout.codeGenDirectory(projectPath: project)
+            .appending(component: CodeGeneratorMaterializer.stagingDirectoryName)
+        #expect(try await fileSystem.contentsOfDirectory(staging).isEmpty)
+    }
+
+    @Test(.inTemporaryDirectory, .withMockedLogger())
+    func materialize_replaces_a_file_whose_permissions_changed() async throws {
+        let root = try #require(FileSystem.temporaryTestDirectory)
+        let project = try await makeProject(root: root)
+        let generator = perTargetGenerator(root: root, script: """
+        echo "#!/bin/sh" > "$TUIST_OUTPUT_SOURCES_DIR/tool.sh"
+        if grep -q edited Strings/en.json; then chmod +x "$TUIST_OUTPUT_SOURCES_DIR/tool.sh"; fi
+        """)
+        let graph = graph(project: project, codeGenerators: [generator])
+        try await subject.materialize(graph: graph)
+        let tool = outputDirectory(project: project, generator: generator).appending(component: "tool.sh")
+
+        try await fileSystem.writeText(
+            #"{"key": "edited"}"#,
+            at: project.appending(components: "Strings", "en.json"),
+            options: Set([.overwrite])
+        )
+        try await subject.materialize(graph: graph)
+
+        #expect(FileManager.default.isExecutableFile(atPath: tool.pathString))
+    }
+
+    @Test(.inTemporaryDirectory, .withMockedLogger())
+    func materialize_leaves_an_unchanged_consumer_share_of_a_code_generation_target_in_place() async throws {
+        let root = try #require(FileSystem.temporaryTestDirectory)
+        let project = try await makeProject(root: root)
+        let graph = codeGenerationTargetGraph(project: project, root: root, script: """
+        /usr/bin/python3 -c '
+        import json, os
+        strings = open("Strings/en.json").read()
+        for output in json.load(open(os.environ["TUIST_OUTPUTS_FILE"])):
+            contents = strings if output["target"] == "GQLTypes" else "let schema = 1"
+            open(os.path.join(output["path"], "Generated.swift"), "w").write(contents)
+        '
+        """)
+        try await subject.materialize(graph: graph)
+        let schema = producerOutputDirectory(project: project, consumer: "GQLSchema").appending(component: "Generated.swift")
+        let types = producerOutputDirectory(project: project, consumer: "GQLTypes").appending(component: "Generated.swift")
+        let schemaBefore = try identity(schema)
+        let typesBefore = try identity(types)
+
+        try await fileSystem.writeText(
+            #"{"key": "edited"}"#,
+            at: project.appending(components: "Strings", "en.json"),
+            options: Set([.overwrite])
+        )
+        try await subject.materialize(graph: graph)
+
+        #expect(try identity(schema) == schemaBefore)
+        #expect(try identity(types).inode != typesBefore.inode)
+        #expect(try await fileSystem.readTextFile(at: types) == #"{"key": "edited"}"#)
+    }
+
     // MARK: - Helpers
+
+    private struct FileIdentity: Equatable {
+        let inode: Int
+        let modificationDate: Date
+    }
+
+    private func identity(_ path: AbsolutePath) throws -> FileIdentity {
+        let attributes = try FileManager.default.attributesOfItem(atPath: path.pathString)
+        return FileIdentity(
+            inode: try #require(attributes[.systemFileNumber] as? Int),
+            modificationDate: try #require(attributes[.modificationDate] as? Date)
+        )
+    }
 
     private func codeGenerationTargetGraph(project: AbsolutePath, root: AbsolutePath, script: String) -> Graph {
         let codegen = CodeGenerator(
