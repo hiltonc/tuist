@@ -15,8 +15,7 @@ public enum CodeGeneratorEnvironment {
     public static let outputsFile = "TUIST_OUTPUTS_FILE"
 
     /// The environment `.script` inputs run with while hashing: the inherited environment, the declared variables, and
-    /// the repository root. Nothing identifies the target, so generators that declare the same script and environment
-    /// can share one run.
+    /// the repository root.
     public static func scriptInputEnvironment(
         for generator: CodeGenerator,
         inherited: [String: String] = Environment.current.variables

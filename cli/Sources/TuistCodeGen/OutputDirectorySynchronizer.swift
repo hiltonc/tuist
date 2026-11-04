@@ -34,7 +34,7 @@ struct OutputDirectorySynchronizer {
             if sourceType == .typeRegular, destinationType == .typeRegular, try isUnchanged(destination, comparedTo: source) {
                 continue
             }
-            if destinationType == .typeDirectory {
+            if destinationType != nil, sourceType == .typeDirectory || destinationType == .typeDirectory {
                 try fileManager.removeItem(atPath: destination.pathString)
             }
             try move(source, to: destination)
