@@ -220,6 +220,136 @@ struct CodeGeneratorWorkspaceMapperTests {
         _ = try await subject.map(workspace: workspace([.test(path: core, targets: [target])]))
     }
 
+    @Test
+    func map_reports_overlaps_in_both_directions_in_declaration_order() async throws {
+        let output = CodeGeneratorLayout.targetOutputDirectory(projectPath: core, target: "AccountUI", generator: "a")
+        let underOutput = CodeGenerator.Path(
+            anchor: .project,
+            anchorDirectory: core,
+            relativePath: output.appending(component: "Assets.swift").relative(to: core).pathString
+        )
+        let containsOutput = CodeGenerator.Path(anchor: .project, anchorDirectory: core, relativePath: "Derived/CodeGen")
+        let globOverOutput = CodeGenerator.Path(anchor: .project, anchorDirectory: core, relativePath: "Derived/**/*.swift")
+        let target = Target.test(
+            name: "AccountUI",
+            product: .staticFramework,
+            codeGenerators: [
+                generator(name: "a"),
+                generator(name: "b", inputs: [
+                    .folder(.init(anchor: .project, anchorDirectory: core, relativePath: "Sources")),
+                    .file(underOutput),
+                    .script("exit 0"),
+                ]),
+                generator(name: "c", inputs: [
+                    .file(containsOutput),
+                    .glob(globOverOutput),
+                    .folder(containsOutput),
+                ]),
+            ]
+        )
+
+        await #expect {
+            try await subject.map(workspace: workspace([.test(path: core, targets: [target])]))
+        } throws: { error in
+            guard case let CodeGeneratorWorkspaceMapperError.invalidDeclarations(issues) = error else { return false }
+            return issues == [
+                (underOutput, "b"),
+                (globOverOutput, "c"),
+                (containsOutput, "c"),
+            ].map { path, generator in
+                "The input '\(path.logicalPath)' of the code generator '\(generator)' in target 'AccountUI' overlaps a code generator's output directory."
+            }
+        }
+    }
+
+    @Test
+    func map_accepts_a_directory_input_whose_output_is_under_a_derived_directory() async throws {
+        let target = Target.test(
+            name: "AccountUI",
+            product: .staticFramework,
+            codeGenerators: [
+                generator(name: "a", inputs: [
+                    .folder(.init(anchor: .project, anchorDirectory: core, relativePath: ".")),
+                    .glob(.init(anchor: .project, anchorDirectory: core, relativePath: "**/*.graphql")),
+                    .file(.init(anchor: .project, anchorDirectory: core, relativePath: "Derived/schema.graphql")),
+                ]),
+            ]
+        )
+
+        _ = try await subject.map(workspace: workspace([.test(path: core, targets: [target])]))
+    }
+
+    @Test(.inTemporaryDirectory)
+    func map_rejects_an_input_that_reaches_an_output_through_a_symbolic_link() async throws {
+        let temporaryDirectory = try #require(FileSystem.temporaryTestDirectory)
+        let fileSystem = FileSystem()
+        let project = temporaryDirectory.appending(component: "Core")
+        let output = CodeGeneratorLayout.targetOutputDirectory(projectPath: project, target: "AccountUI", generator: "a")
+        try await fileSystem.makeDirectory(at: output)
+        let link = temporaryDirectory.appending(component: "Generated")
+        try await fileSystem.createSymbolicLink(from: link, to: output)
+        let input = CodeGenerator.Path(anchor: .repository, anchorDirectory: temporaryDirectory, relativePath: "Generated")
+        let target = Target.test(
+            name: "AccountUI",
+            product: .staticFramework,
+            codeGenerators: [
+                generator(name: "a", rootDirectory: temporaryDirectory),
+                generator(name: "b", inputs: [.folder(input)], rootDirectory: temporaryDirectory),
+            ]
+        )
+
+        await #expect {
+            try await subject.map(workspace: workspace([.test(path: project, targets: [target])]))
+        } throws: { error in
+            guard case let CodeGeneratorWorkspaceMapperError.invalidDeclarations(issues) = error else { return false }
+            return issues == [
+                "The input '\(input.logicalPath)' of the code generator 'b' in target 'AccountUI' overlaps a code generator's output directory.",
+            ]
+        }
+    }
+
+    @Test(.timeLimit(.minutes(1)))
+    func map_checks_hundreds_of_inputs_against_hundreds_of_outputs() async throws {
+        let count = 600
+        let targets = (0 ..< count).map { index in
+            let directory = "Features/Feature\(index)"
+            return Target.test(
+                name: "Feature\(index)",
+                product: .staticFramework,
+                codeGenerators: [
+                    generator(name: "strings", inputs: [
+                        .folder(.init(anchor: .project, anchorDirectory: core, relativePath: directory)),
+                        .glob(.init(anchor: .project, anchorDirectory: core, relativePath: "\(directory)/**/*.strings")),
+                    ]),
+                ]
+            )
+        }
+        let lastOutput = CodeGeneratorLayout.targetOutputDirectory(
+            projectPath: core,
+            target: "Feature\(count - 1)",
+            generator: "strings"
+        )
+        let overlapping = CodeGenerator.Path(
+            anchor: .project,
+            anchorDirectory: core,
+            relativePath: lastOutput.relative(to: core).pathString
+        )
+        let reader = Target.test(
+            name: "Reader",
+            product: .staticFramework,
+            codeGenerators: [generator(name: "reader", inputs: [.folder(overlapping)])]
+        )
+
+        await #expect {
+            try await subject.map(workspace: workspace([.test(path: core, targets: targets + [reader])]))
+        } throws: { error in
+            guard case let CodeGeneratorWorkspaceMapperError.invalidDeclarations(issues) = error else { return false }
+            return issues == [
+                "The input '\(overlapping.logicalPath)' of the code generator 'reader' in target 'Reader' overlaps a code generator's output directory.",
+            ]
+        }
+    }
+
     @Test(.inTemporaryDirectory)
     func map_deletes_output_and_state_no_declaration_accounts_for() async throws {
         let temporaryDirectory = try #require(FileSystem.temporaryTestDirectory)
