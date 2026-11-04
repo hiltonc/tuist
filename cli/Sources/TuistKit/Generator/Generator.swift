@@ -9,6 +9,7 @@ import TuistConfigLoader
 import TuistCore
 import TuistDependencies
 import TuistGenerator
+import TuistHasher
 import TuistLogging
 import TuistPlugin
 import TuistRootDirectoryLocator
@@ -60,6 +61,15 @@ public class Generator: Generating {
     }
 
     public func generateWithGraph(
+        path: AbsolutePath,
+        options: TuistGeneratedProjectOptions.GenerationOptions?
+    ) async throws -> (AbsolutePath, Graph, MapperEnvironment) {
+        try await CodeGeneratorScriptInputCache.scoped {
+            try await generateWithGraphInScope(path: path, options: options)
+        }
+    }
+
+    private func generateWithGraphInScope(
         path: AbsolutePath,
         options: TuistGeneratedProjectOptions.GenerationOptions?
     ) async throws -> (AbsolutePath, Graph, MapperEnvironment) {
@@ -123,10 +133,9 @@ public class Generator: Generating {
         Logger.current.notice("Loading and constructing the graph", metadata: .section)
         Logger.current.notice("It might take a while if the cache is empty")
 
-        let (graph, sideEffectDescriptors, environment, issues) = try await manifestGraphLoader.load(
-            path: path,
-            disableSandbox: options?.disableSandbox ?? true
-        )
+        let (graph, sideEffectDescriptors, environment, issues) = try await CodeGeneratorScriptInputCache.scoped {
+            try await manifestGraphLoader.load(path: path, disableSandbox: options?.disableSandbox ?? true)
+        }
 
         lintingIssues.append(contentsOf: issues)
         return (graph, sideEffectDescriptors, environment)

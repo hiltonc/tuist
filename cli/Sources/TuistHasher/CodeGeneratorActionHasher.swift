@@ -13,6 +13,8 @@ public protocol CodeGeneratorActionHashing: Sendable {
 }
 
 /// Hashes paths by their logical form, so two checkouts at different paths agree.
+///
+/// Inside ``CodeGeneratorScriptInputCache/scoped(_:)``, each distinct `.script` input runs once.
 public struct CodeGeneratorActionHasher: CodeGeneratorActionHashing {
     private static let version = "1"
 
@@ -48,12 +50,8 @@ public struct CodeGeneratorActionHasher: CodeGeneratorActionHashing {
         for input in generator.inputs {
             switch input {
             case let .script(script):
-                let output = try await commandRunner.runAndCollectOutput(
-                    arguments: ["/bin/sh", "-c", script],
-                    environment: CodeGeneratorEnvironment.scriptInputEnvironment(for: action),
-                    workingDirectory: action.projectPath
-                )
-                components.append("script:\(try contentHasher.hash(output.standardOutput))")
+                let output = try await scriptInputOutput(script, generator: generator)
+                components.append("script:\(try contentHasher.hash(output))")
             case .file, .folder, .glob:
                 guard let resolved = resolvedInputs.next() else { continue }
                 components.append("\(resolved.kind.rawValue):\(resolved.declared.logicalPath)")
@@ -64,5 +62,22 @@ public struct CodeGeneratorActionHasher: CodeGeneratorActionHashing {
         }
 
         return try contentHasher.hash(components)
+    }
+
+    private func scriptInputOutput(_ script: String, generator: CodeGenerator) async throws -> String {
+        let environment = CodeGeneratorEnvironment.scriptInputEnvironment(for: generator)
+        let rootDirectory = generator.rootDirectory
+        let run = { @Sendable [commandRunner] in
+            try await commandRunner.runAndCollectOutput(
+                arguments: ["/bin/sh", "-c", script],
+                environment: environment,
+                workingDirectory: rootDirectory
+            ).standardOutput
+        }
+        guard let cache = CodeGeneratorScriptInputCache.current else { return try await run() }
+        return try await cache.output(
+            for: .init(script: script, environment: generator.environment, rootDirectory: rootDirectory),
+            run: run
+        )
     }
 }
