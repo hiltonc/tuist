@@ -32,13 +32,13 @@ public protocol CodeGeneratorMaterializing {
     func materialize(graph: Graph) async throws
 }
 
-/// Runs code generators and moves their output into place.
+/// Runs code generators and moves their output into place, leaving unchanged output files untouched.
 ///
 /// `generate`, `build`, and `test` run it on the graph left after focus, tree-shaking, and cache substitution, so a
 /// pruned or cache-hit target never runs its generator; commands that only hash or inspect the graph never run it.
 ///
-/// The recorded action hash is deleted before the output swap and written after it, so a crash mid-swap makes the next
-/// run regenerate.
+/// The recorded action hash is deleted before the output update and written after it, so a crash mid-update makes the
+/// next run regenerate.
 public struct CodeGeneratorMaterializer: CodeGeneratorMaterializing {
     static let stagingDirectoryName = ".staging"
 
@@ -209,14 +209,24 @@ public struct CodeGeneratorMaterializer: CodeGeneratorMaterializing {
             try await fileSystem.remove(action.statePath)
         }
         for (output, stagingDirectory) in zip(action.outputs, stagingDirectories) {
-            if try await fileSystem.exists(output.directory) {
-                try await fileSystem.remove(output.directory)
-            }
-            try await fileSystem.makeDirectory(at: output.directory.parentDirectory)
-            try await fileSystem.move(from: stagingDirectory, to: output.directory)
+            try await install(stagingDirectory, at: output.directory)
         }
         try await fileSystem.makeDirectory(at: action.statePath.parentDirectory)
         try await fileSystem.writeText(hash, at: action.statePath, encoding: .utf8, options: Set([.overwrite]))
+    }
+
+    /// Moves a staging directory into place. When previous output exists, only what differs changes, so a file whose
+    /// bytes and permissions are unchanged keeps its inode and modification date and Xcode doesn't recompile it.
+    private func install(_ stagingDirectory: AbsolutePath, at outputDirectory: AbsolutePath) async throws {
+        if try await fileSystem.exists(outputDirectory, isDirectory: true) {
+            try OutputDirectorySynchronizer().synchronize(outputDirectory, with: stagingDirectory)
+            return
+        }
+        if try await fileSystem.exists(outputDirectory) {
+            try await fileSystem.remove(outputDirectory)
+        }
+        try await fileSystem.makeDirectory(at: outputDirectory.parentDirectory)
+        try await fileSystem.move(from: stagingDirectory, to: outputDirectory)
     }
 
     private func remove(_ directories: Set<AbsolutePath>) async throws {

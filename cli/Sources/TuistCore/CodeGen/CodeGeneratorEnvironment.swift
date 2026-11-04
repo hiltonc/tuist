@@ -1,5 +1,6 @@
 import Path
 import TuistEnvironment
+import XcodeGraph
 
 /// The environment a code generator runs with.
 ///
@@ -13,19 +14,16 @@ public enum CodeGeneratorEnvironment {
     public static let outputSourcesDirectory = "TUIST_OUTPUT_SOURCES_DIR"
     public static let outputsFile = "TUIST_OUTPUTS_FILE"
 
-    /// The environment `.script` inputs run with while hashing: the inherited environment, the declared variables,
-    /// and the variables locating the generator.
+    /// The environment `.script` inputs run with while hashing: the inherited environment, the declared variables, and
+    /// the repository root. Nothing identifies the target, so generators that declare the same script and environment
+    /// can share one run.
     public static func scriptInputEnvironment(
-        for action: CodeGeneratorAction,
+        for generator: CodeGenerator,
         inherited: [String: String] = Environment.current.variables
     ) -> [String: String] {
         inherited
-            .merging(action.generator.environment) { _, declared in declared }
-            .merging([
-                rootDirectory: action.generator.rootDirectory.pathString,
-                projectDirectory: action.projectPath.pathString,
-                targetName: action.targetName,
-            ]) { _, tuist in tuist }
+            .merging(generator.environment) { _, declared in declared }
+            .merging([rootDirectory: generator.rootDirectory.pathString]) { _, tuist in tuist }
     }
 
     /// The environment the generator's script runs with, given the files and staging directories Tuist prepared.
@@ -36,7 +34,9 @@ public enum CodeGeneratorEnvironment {
         outputsFile: AbsolutePath?,
         inherited: [String: String] = Environment.current.variables
     ) -> [String: String] {
-        var environment = scriptInputEnvironment(for: action, inherited: inherited)
+        var environment = scriptInputEnvironment(for: action.generator, inherited: inherited)
+        environment[projectDirectory] = action.projectPath.pathString
+        environment[targetName] = action.targetName
         environment[self.inputsFile] = inputsFile.pathString
         environment[self.outputSourcesDirectory] = outputSourcesDirectory?.pathString
         environment[self.outputsFile] = outputsFile?.pathString

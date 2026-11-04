@@ -4,6 +4,7 @@ import Foundation
 import Path
 import Testing
 import TuistCore
+import TuistSupport
 import XcodeGraph
 @testable import TuistHasher
 
@@ -205,7 +206,84 @@ struct CodeGeneratorActionHasherTests {
         }
     }
 
+    @Test(.inTemporaryDirectory)
+    func script_inputs_shared_by_several_generators_run_once_per_cache_scope() async throws {
+        let root = try #require(FileSystem.temporaryTestDirectory)
+        try await writeFixture(root: root)
+        let counter = root.appending(component: "runs")
+        let script = #"echo run >> "$TUIST_ROOT_DIR/runs"; cat "$TUIST_ROOT_DIR/version.txt""#
+        let actions = (0 ..< 8).map { index in
+            action(root: root, targetName: "Target\(index)", inputs: [.script(script)])
+        }
+        let subject = subject
+
+        let hashes = try await CodeGeneratorScriptInputCache.scoped {
+            try await actions.concurrentMap { try await subject.hash(action: $0) }
+        }
+        #expect(try await runs(counter) == 1)
+        #expect(Set(hashes).count == actions.count)
+
+        try await fileSystem.writeText("2.0.0", at: root.appending(component: "version.txt"), options: Set([.overwrite]))
+        let rehashed = try await CodeGeneratorScriptInputCache.scoped {
+            try await actions.concurrentMap { try await subject.hash(action: $0) }
+        }
+        #expect(try await runs(counter) == 2)
+        #expect(Set(hashes).isDisjoint(with: rehashed))
+    }
+
+    @Test(.inTemporaryDirectory)
+    func script_inputs_with_a_different_declared_environment_run_separately() async throws {
+        let root = try #require(FileSystem.temporaryTestDirectory)
+        try await writeFixture(root: root)
+        let counter = root.appending(component: "runs")
+        let script = #"echo run >> "$TUIST_ROOT_DIR/runs"; echo "$TOOL_FLAVOR""#
+
+        let (a, b, alsoA) = try await CodeGeneratorScriptInputCache.scoped {
+            (
+                try await subject.hash(action: action(root: root, inputs: [.script(script)], environment: ["TOOL_FLAVOR": "a"])),
+                try await subject.hash(action: action(root: root, inputs: [.script(script)], environment: ["TOOL_FLAVOR": "b"])),
+                try await subject.hash(action: action(root: root, inputs: [.script(script)], environment: ["TOOL_FLAVOR": "a"]))
+            )
+        }
+
+        #expect(try await runs(counter) == 2)
+        #expect(a != b)
+        #expect(a == alsoA)
+    }
+
+    @Test(.inTemporaryDirectory)
+    func script_inputs_run_every_time_outside_a_cache_scope() async throws {
+        let root = try #require(FileSystem.temporaryTestDirectory)
+        try await writeFixture(root: root)
+        let counter = root.appending(component: "runs")
+        let inputs: [CodeGenerator.Input] = [.script(#"echo run >> "$TUIST_ROOT_DIR/runs""#)]
+
+        _ = try await subject.hash(action: action(root: root, inputs: inputs))
+        _ = try await subject.hash(action: action(root: root, inputs: inputs))
+
+        #expect(try await runs(counter) == 2)
+    }
+
+    @Test(.inTemporaryDirectory)
+    func script_inputs_run_from_the_repository_root_without_the_target_or_project() async throws {
+        let root = try #require(FileSystem.temporaryTestDirectory)
+        try await writeFixture(root: root)
+        let script = #"""
+        [ "$(pwd -P)" = "$(cd "$TUIST_ROOT_DIR" && pwd -P)" ] && echo root > "$TUIST_ROOT_DIR/script-input"
+        echo "${TUIST_TARGET_NAME-unset} ${TUIST_PROJECT_DIR-unset}" >> "$TUIST_ROOT_DIR/script-input"
+        """#
+
+        _ = try await subject.hash(action: action(root: root, inputs: [.script(script)]))
+
+        let recorded = try await fileSystem.readTextFile(at: root.appending(component: "script-input"))
+        #expect(recorded == "root\nunset unset\n")
+    }
+
     // MARK: - Helpers
+
+    private func runs(_ counter: AbsolutePath) async throws -> Int {
+        try await fileSystem.readTextFile(at: counter).split(separator: "\n").count
+    }
 
     private func writeFixture(root: AbsolutePath) async throws {
         let schema = root.appending(components: "Projects", "Core", "Schema")
