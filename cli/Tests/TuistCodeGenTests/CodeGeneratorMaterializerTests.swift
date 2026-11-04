@@ -386,6 +386,58 @@ struct CodeGeneratorMaterializerTests {
     }
 
     @Test(.inTemporaryDirectory, .withMockedLogger())
+    func materialize_replaces_a_file_with_a_directory_of_the_same_name() async throws {
+        let root = try #require(FileSystem.temporaryTestDirectory)
+        let project = try await makeProject(root: root)
+        let generator = perTargetGenerator(root: root, script: """
+        if grep -q edited Strings/en.json; then
+            mkdir "$TUIST_OUTPUT_SOURCES_DIR/Models"
+            touch "$TUIST_OUTPUT_SOURCES_DIR/Models/User.swift"
+        else
+            touch "$TUIST_OUTPUT_SOURCES_DIR/Models"
+        fi
+        """)
+        let graph = graph(project: project, codeGenerators: [generator])
+        try await subject.materialize(graph: graph)
+
+        try await fileSystem.writeText(
+            #"{"key": "edited"}"#,
+            at: project.appending(components: "Strings", "en.json"),
+            options: Set([.overwrite])
+        )
+        try await subject.materialize(graph: graph)
+
+        let models = outputDirectory(project: project, generator: generator).appending(component: "Models")
+        #expect(try await fileSystem.contentsOfDirectory(models).map(\.basename) == ["User.swift"])
+    }
+
+    @Test(.inTemporaryDirectory, .withMockedLogger())
+    func materialize_replaces_a_directory_with_a_file_of_the_same_name() async throws {
+        let root = try #require(FileSystem.temporaryTestDirectory)
+        let project = try await makeProject(root: root)
+        let generator = perTargetGenerator(root: root, script: """
+        if grep -q edited Strings/en.json; then
+            echo "let models = 1" > "$TUIST_OUTPUT_SOURCES_DIR/Models"
+        else
+            mkdir "$TUIST_OUTPUT_SOURCES_DIR/Models"
+            touch "$TUIST_OUTPUT_SOURCES_DIR/Models/User.swift"
+        fi
+        """)
+        let graph = graph(project: project, codeGenerators: [generator])
+        try await subject.materialize(graph: graph)
+
+        try await fileSystem.writeText(
+            #"{"key": "edited"}"#,
+            at: project.appending(components: "Strings", "en.json"),
+            options: Set([.overwrite])
+        )
+        try await subject.materialize(graph: graph)
+
+        let models = outputDirectory(project: project, generator: generator).appending(component: "Models")
+        #expect(try await fileSystem.readTextFile(at: models) == "let models = 1\n")
+    }
+
+    @Test(.inTemporaryDirectory, .withMockedLogger())
     func materialize_leaves_an_unchanged_consumer_share_of_a_code_generation_target_in_place() async throws {
         let root = try #require(FileSystem.temporaryTestDirectory)
         let project = try await makeProject(root: root)
