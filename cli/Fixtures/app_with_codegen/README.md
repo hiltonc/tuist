@@ -89,6 +89,8 @@ A code generation target has one directory per consumer, so instead:
 
 Tuist also sets the values declared in a generator's `environment:`, and they're part of the action hash. Every output directory is a **staging** directory that Tuist moves into place after a zero exit. A generator writes files into the directory it's given but must not hard-code that directory's path inside them, because the files end up somewhere else.
 
+`.script` inputs don't get this contract. They run from the repo root with only `TUIST_ROOT_DIR` and the declared `environment:` added to the inherited environment, so identical script inputs run once per command and share their output. A script input that needs per-target context takes it as an argument, such as a path relative to the root.
+
 Inputs and outputs travel in JSON files, so each input keeps its type and no path needs quoting. The outputs file is an array because target names aren't unique across projects.
 
 ### No script derives its own paths

@@ -37,6 +37,9 @@
 /// - `TUIST_INPUTS_FILE`: a JSON array of `{"type", "path"}` entries, one per file, folder, and glob match, with
 ///   absolute paths. Script inputs are absent.
 /// - `TUIST_TARGET_NAME`, `TUIST_PROJECT_DIR`, and `TUIST_ROOT_DIR`.
+///
+/// ``Input/script(_:)`` inputs run differently: from the repository root, with only `TUIST_ROOT_DIR` and the declared
+/// `environment` added.
 public struct CodeGenerator: Codable, Equatable, Sendable {
     /// The generator's name, unique within the target. It's a component of the output directory, so it can't
     /// contain a path separator or be `.` or `..`.
@@ -84,9 +87,16 @@ public struct CodeGenerator: Codable, Equatable, Sendable {
         /// and still contributes itself, so the hash moves when the first match appears.
         case glob(Path)
 
-        /// A shell script whose standard output affects the output, such as a tool's `--version`. It runs from the
-        /// project directory with `TUIST_ROOT_DIR`, `TUIST_PROJECT_DIR`, `TUIST_TARGET_NAME`, and the declared
-        /// environment set.
+        /// A shell script whose standard output affects the output, such as a tool's `--version`.
+        ///
+        /// It runs from the repository root, inheriting the environment, with only `TUIST_ROOT_DIR` and the declared
+        /// `environment` added. Nothing identifies the target or project, so identical script inputs with the same
+        /// declared environment run once per command and share their output. A script that needs per-target context
+        /// takes it as an argument, such as a path relative to the root:
+        ///
+        /// ```swift
+        /// .script(#""$TUIST_ROOT_DIR/scripts/schema-version.sh" Projects/AccountUI"#)
+        /// ```
         case script(String)
     }
 
