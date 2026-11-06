@@ -1,0 +1,3 @@
+// Shared at the repo root, so Projects/*/Project.swift can only reach it via `//`.
+// A stand-in: swiftgen-assets.sh checks it exists and names it in the generated header,
+// which is enough to make "the declared inputs are the only inputs" observable.

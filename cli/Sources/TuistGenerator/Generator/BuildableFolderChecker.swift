@@ -18,7 +18,8 @@ public struct BuildableFolderChecker: BuildableFolderChecking {
 
     public func containsSources(_ folders: [XcodeGraph.BuildableFolder]) async throws -> Bool {
         folders.contains(where: { folder in
-            folder.resolvedFiles.contains(where: { Target.validSourceExtensions.contains($0.path.extension ?? "") })
+            folder.isGenerated
+                || folder.resolvedFiles.contains(where: { Target.validSourceExtensions.contains($0.path.extension ?? "") })
         })
     }
 

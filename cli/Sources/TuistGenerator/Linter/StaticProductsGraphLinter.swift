@@ -251,7 +251,7 @@ struct StaticProductsGraphLinter: StaticProductsGraphLinting {
             }
         case let .target(name, path, _):
             guard let target = graphTraverser.target(path: path, name: name) else { return false }
-            return target.target.product.isStatic
+            return target.target.product.isStatic && target.target.codegen == nil
         case .sdk, .macro:
             return false
         }

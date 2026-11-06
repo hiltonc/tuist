@@ -198,6 +198,13 @@ extension XcodeGraph.Target {
             fileSystem: fileSystem
         )
 
+        let codeGenerators = try manifest.codeGenerators.map {
+            try XcodeGraph.CodeGenerator.from(manifest: $0, generatorPaths: generatorPaths)
+        }
+        let codegen = try manifest.codegen.map {
+            try XcodeGraph.CodeGenerator.from(manifest: $0, name: name, generatorPaths: generatorPaths)
+        }
+
         return XcodeGraph.Target(
             name: name,
             destinations: destinations,
@@ -228,7 +235,9 @@ extension XcodeGraph.Target {
             metadata: metadata,
             type: type,
             buildableFolders: buildableFolders,
-            foreignBuild: foreignBuild
+            foreignBuild: foreignBuild,
+            codeGenerators: codeGenerators,
+            codegen: codegen
         )
     }
 
