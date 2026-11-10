@@ -13,6 +13,7 @@ extension XcodeGraph.CodeGenerator {
             script: manifest.script,
             inputs: try manifest.inputs.map { try .from(manifest: $0, generatorPaths: generatorPaths) },
             environment: manifest.environment,
+            contents: Set(manifest.contents.map(XcodeGraph.BuildableFolderContent.from(manifest:))),
             rootDirectory: generatorPaths.rootDirectory
         )
     }
@@ -31,7 +32,8 @@ extension XcodeGraph.CodeGenerator {
             outputs: try manifest.outputs.map { output in
                 XcodeGraph.CodeGenerator.Output(
                     projectPath: try generatorPaths.resolveSchemeActionProjectPath(output.project),
-                    target: output.target
+                    target: output.target,
+                    contents: Set(output.contents.map(XcodeGraph.BuildableFolderContent.from(manifest:)))
                 )
             },
             rootDirectory: generatorPaths.rootDirectory

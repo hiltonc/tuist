@@ -32,6 +32,28 @@ struct CreateBuildableFoldersProjectMapperTests {
     }
 
     @Test
+    func map_leavesCodeGeneratorOutputToTheMaterializer() throws {
+        // Given
+        let project = Project.test(targets: [
+            Target.test(buildableFolders: [
+                BuildableFolder(
+                    path: try AbsolutePath(validating: "/Project/Derived/CodeGen/Targets/Target/strings/Sources"),
+                    exceptions: [],
+                    resolvedFiles: [],
+                    contents: [.resources],
+                    isCodeGeneratorOutput: true
+                ),
+            ]),
+        ])
+
+        // When
+        let (_, gotSideEffects) = try subject.map(project: project)
+
+        // Then
+        #expect(gotSideEffects.isEmpty)
+    }
+
+    @Test
     func map_withoutDeclaredFolders_hasNoSideEffects() throws {
         // Given
         let project = Project.test(targets: [

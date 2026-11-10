@@ -240,9 +240,10 @@ public struct TargetContentHasher: TargetContentHashing { // swiftlint:disable:t
 
         let hashingFilesFilter = HashingFilesFilter()
         let buildableFolderHashes = try await graphTarget.target
-            .buildableFolders.filter { !$0.isCodeGeneratorOutput }.sorted(by: { $0.path < $1.path })
+            .buildableFolders.sorted(by: { $0.path < $1.path })
             .map { buildableFolder in
-                let resolvedFiles = buildableFolder.resolvedFiles
+                // A code generator's action hash covers its output files, so only the declared contents count here.
+                let resolvedFiles = buildableFolder.isCodeGeneratorOutput ? [] : buildableFolder.resolvedFiles
                     .filter { hashingFilesFilter($0.path) }
                     .sorted(by: { $0.path < $1.path })
 

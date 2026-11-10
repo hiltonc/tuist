@@ -32,7 +32,7 @@
 ///
 /// The script runs from the project directory, inheriting the environment, with these variables set:
 ///
-/// - `TUIST_OUTPUT_SOURCES_DIR`: an empty directory to write sources into. Tuist moves it into place after the
+/// - `TUIST_OUTPUT_SOURCES_DIR`: an empty directory to write the output into. Tuist moves it into place after the
 ///   script exits zero, so generated files mustn't embed its path.
 /// - `TUIST_INPUTS_FILE`: a JSON array of `{"type", "path"}` entries, one per file, folder, and glob match, with
 ///   absolute paths. Script inputs are absent.
@@ -55,6 +55,10 @@ public struct CodeGenerator: Codable, Equatable, Sendable {
     /// the content hash. The rest of the environment, `PATH` included, doesn't.
     public var environment: [String: String]
 
+    /// What the generator writes to its output directory, which Tuist attaches as a buildable folder declaring these
+    /// contents. See ``BuildableFolderContent``.
+    public var contents: Set<BuildableFolderContent>
+
     /// Creates a generator that runs a shell script.
     ///
     /// - Parameters:
@@ -62,13 +66,15 @@ public struct CodeGenerator: Codable, Equatable, Sendable {
     ///   - script: The shell script that runs the generator.
     ///   - inputs: The inputs the generator's output depends on.
     ///   - environment: Variables the generator's output depends on.
+    ///   - contents: What the generator writes to its output directory.
     public static func script(
         name: String,
         script: String,
         inputs: [Input] = [],
-        environment: [String: String] = [:]
+        environment: [String: String] = [:],
+        contents: Set<BuildableFolderContent> = [.sources]
     ) -> Self {
-        Self(name: name, script: script, inputs: inputs, environment: environment)
+        Self(name: name, script: script, inputs: inputs, environment: environment, contents: contents)
     }
 
     /// An input that affects a generator's output.
@@ -109,9 +115,16 @@ public struct CodeGenerator: Codable, Equatable, Sendable {
         /// The consumer's name.
         public var target: String
 
+        /// What the generator writes to the consumer's output directory. See ``BuildableFolderContent``.
+        public var contents: Set<BuildableFolderContent>
+
         /// A consumer in the generator's own project.
-        public static func output(target: String) -> Self {
-            Self(project: nil, target: target)
+        ///
+        /// - Parameters:
+        ///   - target: The consumer's name.
+        ///   - contents: What the generator writes to the consumer's output directory.
+        public static func output(target: String, contents: Set<BuildableFolderContent> = [.sources]) -> Self {
+            Self(project: nil, target: target, contents: contents)
         }
 
         /// A consumer in another project.
@@ -119,8 +132,13 @@ public struct CodeGenerator: Codable, Equatable, Sendable {
         /// - Parameters:
         ///   - project: The path to the directory containing the consumer's project.
         ///   - target: The consumer's name.
-        public static func output(project: Path, target: String) -> Self {
-            Self(project: project, target: target)
+        ///   - contents: What the generator writes to the consumer's output directory.
+        public static func output(
+            project: Path,
+            target: String,
+            contents: Set<BuildableFolderContent> = [.sources]
+        ) -> Self {
+            Self(project: project, target: target, contents: contents)
         }
     }
 }

@@ -31,6 +31,7 @@ struct CodeGeneratorManifestMapperTests {
         #expect(generator.name == "assets")
         #expect(generator.environment == ["LEVEL": "public"])
         #expect(generator.rootDirectory == "/Repository")
+        #expect(generator.contents == [.sources])
         #expect(generator.outputs.isEmpty)
         #expect(generator.inputs == [
             .folder(.init(
@@ -58,7 +59,7 @@ struct CodeGeneratorManifestMapperTests {
             script: "exit 0",
             outputs: [
                 .output(target: "GQLSchema"),
-                .output(project: "//Projects/Networking", target: "GQLTransport"),
+                .output(project: "//Projects/Networking", target: "GQLTransport", contents: [.sources, .resources]),
             ]
         )
 
@@ -68,8 +69,17 @@ struct CodeGeneratorManifestMapperTests {
         #expect(generator.name == "GQLCodegen")
         #expect(generator.outputs == [
             .init(projectPath: "/Repository/Projects/DesignSystem", target: "GQLSchema"),
-            .init(projectPath: "/Repository/Projects/Networking", target: "GQLTransport"),
+            .init(projectPath: "/Repository/Projects/Networking", target: "GQLTransport", contents: [.sources, .resources]),
         ])
+    }
+
+    @Test
+    func from_maps_the_contents_a_per_target_generator_declares() throws {
+        let manifest = ProjectDescription.CodeGenerator.script(name: "strings", script: "exit 0", contents: [.resources])
+
+        let generator = try XcodeGraph.CodeGenerator.from(manifest: manifest, generatorPaths: generatorPaths)
+
+        #expect(generator.contents == [.resources])
     }
 
     @Test

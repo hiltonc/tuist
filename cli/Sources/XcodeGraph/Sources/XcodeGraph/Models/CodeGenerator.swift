@@ -21,6 +21,9 @@ public struct CodeGenerator: Equatable, Hashable, Codable, Sendable {
     /// contribute to the action hash.
     public let environment: [String: String]
 
+    /// What a per-target generator writes to its output directory. A code generation target declares it per output.
+    public let contents: Set<BuildableFolderContent>
+
     /// The targets a code generation target produces sources for. Empty for a per-target generator.
     public let outputs: [Output]
 
@@ -32,6 +35,7 @@ public struct CodeGenerator: Equatable, Hashable, Codable, Sendable {
         script: String,
         inputs: [Input],
         environment: [String: String] = [:],
+        contents: Set<BuildableFolderContent> = [.sources],
         outputs: [Output] = [],
         rootDirectory: AbsolutePath
     ) {
@@ -39,6 +43,7 @@ public struct CodeGenerator: Equatable, Hashable, Codable, Sendable {
         self.script = script
         self.inputs = inputs
         self.environment = environment
+        self.contents = contents
         self.outputs = outputs
         self.rootDirectory = rootDirectory
     }
@@ -119,9 +124,13 @@ public struct CodeGenerator: Equatable, Hashable, Codable, Sendable {
         /// The consumer's name.
         public let target: String
 
-        public init(projectPath: AbsolutePath, target: String) {
+        /// What the generator writes to the consumer's output directory.
+        public let contents: Set<BuildableFolderContent>
+
+        public init(projectPath: AbsolutePath, target: String, contents: Set<BuildableFolderContent> = [.sources]) {
             self.projectPath = projectPath
             self.target = target
+            self.contents = contents
         }
     }
 
@@ -131,6 +140,7 @@ public struct CodeGenerator: Equatable, Hashable, Codable, Sendable {
             script: String = "exit 0",
             inputs: [Input] = [],
             environment: [String: String] = [:],
+            contents: Set<BuildableFolderContent> = [.sources],
             outputs: [Output] = [],
             // swiftlint:disable:next force_try
             rootDirectory: AbsolutePath = try! AbsolutePath(validating: "/Repository")
@@ -140,6 +150,7 @@ public struct CodeGenerator: Equatable, Hashable, Codable, Sendable {
                 script: script,
                 inputs: inputs,
                 environment: environment,
+                contents: contents,
                 outputs: outputs,
                 rootDirectory: rootDirectory
             )

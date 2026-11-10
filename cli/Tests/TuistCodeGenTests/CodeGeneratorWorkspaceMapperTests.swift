@@ -33,6 +33,29 @@ struct CodeGeneratorWorkspaceMapperTests {
     }
 
     @Test
+    func map_gives_each_output_folder_the_contents_its_generator_declares() async throws {
+        let accountUI = Target.test(
+            name: "AccountUI",
+            product: .staticFramework,
+            codeGenerators: [generator(name: "sources"), generator(name: "strings", contents: [.resources])]
+        )
+        let codegen = Target.test(
+            name: "GQLCodegen",
+            product: .staticLibrary,
+            codegen: generator(name: "GQLCodegen", outputs: [
+                .init(projectPath: core, target: "GQLSchema", contents: [.sources, .resources]),
+            ])
+        )
+        let schema = Target.test(name: "GQLSchema", product: .staticFramework)
+
+        let (mapped, _) = try await subject.map(workspace: workspace([.test(path: core, targets: [accountUI, codegen, schema])]))
+
+        let targets = try #require(mapped.projects.first?.targets)
+        #expect(targets["AccountUI"]?.buildableFolders.map(\.contents) == [[.sources], [.resources]])
+        #expect(targets["GQLSchema"]?.buildableFolders.map(\.contents) == [[.sources, .resources]])
+    }
+
+    @Test
     func map_injects_the_producer_into_each_consumers_model_dependencies() async throws {
         let codegen = Target.test(
             name: "GQLCodegen",
@@ -414,6 +437,7 @@ struct CodeGeneratorWorkspaceMapperTests {
     private func generator(
         name: String,
         inputs: [CodeGenerator.Input] = [],
+        contents: Set<BuildableFolderContent> = [.sources],
         outputs: [CodeGenerator.Output] = [],
         rootDirectory: AbsolutePath? = nil
     ) -> CodeGenerator {
@@ -421,6 +445,7 @@ struct CodeGeneratorWorkspaceMapperTests {
             name: name,
             script: "exit 0",
             inputs: inputs,
+            contents: contents,
             outputs: outputs,
             rootDirectory: rootDirectory ?? root
         )

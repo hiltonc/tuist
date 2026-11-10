@@ -160,6 +160,22 @@ struct TargetImportsScannerTests {
         }
     }
 
+    @Test(.withScopedAlertController()) func imports_skips_code_generator_output_that_holds_only_resources() async throws {
+        try await fileSystem.runInTemporaryDirectory(prefix: UUID().uuidString) { temporaryDirectory in
+            // Given
+            var folder = generatedFolder(temporaryDirectory.appending(components: "Derived", "CodeGen", "Sources"))
+            folder.contents = [.resources]
+            let target = Target.test(name: "Strings", buildableFolders: [folder])
+
+            // When
+            let result = try await TargetImportsScanner().imports(for: target)
+
+            // Then
+            #expect(result == [])
+            #expect(AlertController.current.warnings().isEmpty)
+        }
+    }
+
     @Test func lint_counts_an_import_only_in_code_generator_output() async throws {
         try await fileSystem.runInTemporaryDirectory(prefix: UUID().uuidString) { temporaryDirectory in
             // Given
@@ -256,7 +272,12 @@ struct TargetImportsScannerTests {
 }
 
 private func generatedFolder(_ path: AbsolutePath) -> BuildableFolder {
-    BuildableFolder(path: path, exceptions: BuildableFolderExceptions(exceptions: []), resolvedFiles: [], isCodeGeneratorOutput: true)
+    BuildableFolder(
+        path: path,
+        exceptions: BuildableFolderExceptions(exceptions: []),
+        resolvedFiles: [],
+        isCodeGeneratorOutput: true
+    )
 }
 
 private actor ConcurrentSourceCodeReader {

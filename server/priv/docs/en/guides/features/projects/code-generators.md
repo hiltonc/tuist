@@ -2,12 +2,12 @@
 {
   "title": "Code generators",
   "titleTemplate": ":title · Projects · Features · Guides · Tuist",
-  "description": "Learn how to declare commands that generate a target's sources from declared inputs."
+  "description": "Learn how to declare commands that generate a target's sources and resources from declared inputs."
 }
 ---
 # Code generators {#code-generators}
 
-A code generator is a command that produces some of a target's sources from a declared set of inputs. SwiftGen accessors, typed localized strings, and Apollo GraphQL types are typical examples. Tuist runs it during `tuist generate`, `tuist build`, and `tuist test` and attaches its output to the target. Its declaration and inputs contribute to the target's [content hash](/guides/features/projects/hashing).
+A code generator is a command that produces some of a target's sources or resources from a declared set of inputs. SwiftGen accessors, typed localized strings, and Apollo GraphQL types are typical examples. Tuist runs it during `tuist generate`, `tuist build`, and `tuist test` and attaches its output to the target. Its declaration and inputs contribute to the target's [content hash](/guides/features/projects/hashing).
 
 ## Per-target generators {#per-target-generators}
 
@@ -46,7 +46,7 @@ The script runs with `/bin/sh` from the project's directory. It inherits the env
 
 | Variable | Value |
 | --- | --- |
-| `TUIST_OUTPUT_SOURCES_DIR` | An empty directory to write sources into. Tuist moves it into place after the script exits zero, so generated files mustn't embed its path. |
+| `TUIST_OUTPUT_SOURCES_DIR` | An empty directory to write the output into. Tuist moves it into place after the script exits zero, so generated files mustn't embed its path. |
 | `TUIST_INPUTS_FILE` | A JSON array of `{"type", "path"}` entries with absolute paths: one per `.file`, one per `.folder`, and one per `.glob` match. `.script` inputs are absent. |
 | `TUIST_TARGET_NAME` | The target that declares the generator. |
 | `TUIST_PROJECT_DIR` | The directory containing the project's manifest. |
@@ -129,6 +129,39 @@ A code generation target's script receives the same environment as a per-target 
 
 Look outputs up by `project` and `target` rather than by position. Tuist generates a code generation target as an aggregate target that builds nothing, and produces or skips all its outputs together.
 
+## Generated resources {#generated-resources}
+
+Tuist attaches each output directory as a [buildable folder that declares its contents](/guides/features/projects/best-practices#buildable-folders-declared-contents), so the project is the same before and after a generator first runs. An output holds sources unless it says otherwise. Declare `contents` on a per-target generator or on a code generation target's output when the generator writes resources:
+
+```swift
+.target(
+    name: "AccountUI",
+    destinations: .iOS,
+    product: .staticFramework,
+    bundleId: "dev.tuist.accountui",
+    buildableFolders: ["Sources/AccountUI"],
+    codeGenerators: [
+        .script(
+            name: "localizations",
+            script: #"exec "$TUIST_ROOT_DIR/scripts/localizations.sh""#,
+            inputs: [.file("Strings/en.json")],
+            contents: [.sources, .resources]
+        ),
+    ]
+),
+.codegen(
+    name: "GQLCodegen",
+    script: #"exec "$TUIST_ROOT_DIR/Codegen/apollo.sh""#,
+    inputs: [.file("//Codegen/schema.graphqls")],
+    outputs: [
+        .output(target: "GQLSchema"),
+        .output(target: "GQLFixtures", contents: [.resources]),
+    ]
+)
+```
+
+Resources follow the target's product. An app or dynamic framework copies them from the output folder. A static target moves them to its companion resource bundle, where `Bundle.module` finds them. An output that holds both sources and resources is added to both targets, and its files are routed by type. Changing an output's `contents` changes its consumer's hash but doesn't rerun the generator.
+
 ## One input split across targets {#one-input-split-across-targets}
 
 Sometimes one input is split across many targets by per-target configuration. For example, a single `en.json` might be divided among feature modules by key globs in each module's configuration file, with one module's `**` catching the rest. Every target's output then depends on every target's configuration, since changing one module's globs can move keys into or out of any other. This can be declared in two forms:
@@ -140,7 +173,6 @@ Prefer the code generation target. Per-target generators keep the consumers inde
 
 ## Limitations {#limitations}
 
-- A generator's output contributes sources only.
 - One generator can't consume another's output; the order in which generators run is unspecified, and they can run at the same time.
 - Targets resolved by a package manager can't declare or consume generators.
 - Nothing sandboxes a generator, so it can read and write outside its declared inputs and output.

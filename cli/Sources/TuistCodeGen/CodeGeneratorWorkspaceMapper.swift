@@ -48,13 +48,7 @@ public struct CodeGeneratorWorkspaceMapper: WorkspaceMapping {
             for output in action.outputs {
                 guard let projectIndex = projectIndices[output.projectPath] else { continue }
                 var consumer = workspace.projects[projectIndex].targets[output.target]!
-                consumer.buildableFolders.append(BuildableFolder(
-                    path: output.directory,
-                    exceptions: BuildableFolderExceptions(exceptions: []),
-                    resolvedFiles: [],
-                    contents: [.sources],
-                    isCodeGeneratorOutput: true
-                ))
+                consumer.buildableFolders.append(output.buildableFolder)
                 if action.isMultiTarget, !consumer.declaresDependency(
                     on: action.targetName,
                     in: action.projectPath,
@@ -306,6 +300,18 @@ extension Target {
                 false
             }
         }
+    }
+}
+
+extension CodeGeneratorAction.Output {
+    fileprivate var buildableFolder: BuildableFolder {
+        BuildableFolder(
+            path: directory,
+            exceptions: BuildableFolderExceptions(exceptions: []),
+            resolvedFiles: [],
+            contents: contents,
+            isCodeGeneratorOutput: true
+        )
     }
 }
 
