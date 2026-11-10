@@ -13,11 +13,18 @@ public struct CodeGeneratorAction: Equatable, Hashable, Sendable {
         public let projectPath: AbsolutePath
         public let target: String
         public let directory: AbsolutePath
+        public let contents: Set<BuildableFolderContent>
 
-        public init(projectPath: AbsolutePath, target: String, directory: AbsolutePath) {
+        public init(
+            projectPath: AbsolutePath,
+            target: String,
+            directory: AbsolutePath,
+            contents: Set<BuildableFolderContent> = [.sources]
+        ) {
             self.projectPath = projectPath
             self.target = target
             self.directory = directory
+            self.contents = contents
         }
     }
 
@@ -70,7 +77,8 @@ public struct CodeGeneratorAction: Equatable, Hashable, Sendable {
                             projectPath: projectPath,
                             target: target.name,
                             generator: generator.name
-                        )
+                        ),
+                        contents: generator.contents
                     ),
                 ],
                 statePath: CodeGeneratorLayout.targetStatePath(
@@ -94,7 +102,8 @@ public struct CodeGeneratorAction: Equatable, Hashable, Sendable {
                             consumerProjectPath: output.projectPath,
                             producer: target.name,
                             consumer: output.target
-                        )
+                        ),
+                        contents: output.contents
                     )
                 },
                 statePath: CodeGeneratorLayout.producerStatePath(projectPath: projectPath, producer: target.name)

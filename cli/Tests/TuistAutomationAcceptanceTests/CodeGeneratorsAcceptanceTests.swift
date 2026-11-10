@@ -6,6 +6,7 @@ import TuistAcceptanceTesting
 import TuistBuildCommand
 import TuistCore
 import TuistGenerateCommand
+import TuistProcess
 import TuistSupport
 import TuistTestCommand
 import TuistTesting
@@ -76,5 +77,54 @@ struct CodeGeneratorsAcceptanceTests {
                 "--derived-data-path", derivedDataPath.pathString,
             ]
         )
+    }
+
+    @Test(
+        .withFixture("app_with_codegen_resources", fixturesDirectory: Fixtures.cliDirectory),
+        .inTemporaryDirectory,
+        .withMockedEnvironment(),
+        .withMockedLogger()
+    )
+    func generated_resources_follow_their_targets_product() async throws {
+        let fixtureDirectory = try #require(TuistTest.fixtureDirectory)
+        let derivedDataPath = try #require(FileSystem.temporaryTestDirectory)
+        let pbxprojPath = fixtureDirectory.appending(components: "App.xcodeproj", "project.pbxproj")
+
+        try await TuistTest.run(GenerateCommand.self, ["--path", fixtureDirectory.pathString, "--no-open"])
+        let projectBeforeFirstRun = try await fileSystem.readFile(at: pbxprojPath)
+        let mixed = CodeGeneratorLayout.targetOutputDirectory(
+            projectPath: fixtureDirectory,
+            target: "MixedKit",
+            generator: "mixed"
+        )
+        #expect(try await fileSystem.exists(mixed.appending(component: "mixed.txt")))
+
+        try await TuistTest.run(GenerateCommand.self, ["--path", fixtureDirectory.pathString, "--no-open"])
+        TuistTest.expectLogs("3 code generators up to date", at: .notice)
+        #expect(try await fileSystem.readFile(at: pbxprojPath) == projectBeforeFirstRun)
+
+        try await TuistTest.run(
+            BuildCommand.self,
+            ["App", "--path", fixtureDirectory.pathString, "--derived-data-path", derivedDataPath.pathString]
+        )
+
+        let products = derivedDataPath.appending(components: "Build", "Products", "Debug")
+        let app = products.appending(component: "App.app")
+        let appResources = app.appending(components: "Contents", "Resources")
+        #expect(try await fileSystem.exists(
+            app.appending(components: "Contents", "Frameworks", "DynamicKit.framework", "Resources", "dynamic.txt")
+        ))
+        #expect(try await fileSystem.exists(
+            appResources.appending(components: "App_StaticKit.bundle", "Contents", "Resources", "static.txt")
+        ))
+        #expect(try await fileSystem.exists(
+            appResources.appending(components: "App_MixedKit.bundle", "Contents", "Resources", "mixed.txt")
+        ))
+        #expect(try await !fileSystem.exists(
+            appResources.appending(components: "App_MixedKit.bundle", "Contents", "Resources", "MixedMessage.swift")
+        ))
+        let output = try await CommandRunner()
+            .capture(arguments: [app.appending(components: "Contents", "MacOS", "App").pathString])
+        #expect(output.trimmingCharacters(in: .whitespacesAndNewlines) == "Dynamic Static Mixed")
     }
 }

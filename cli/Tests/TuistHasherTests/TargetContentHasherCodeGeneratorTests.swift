@@ -67,6 +67,21 @@ struct TargetContentHasherCodeGeneratorTests {
     }
 
     @Test(.inTemporaryDirectory)
+    func hash_changes_when_the_outputs_declared_contents_change() async throws {
+        let root = try #require(FileSystem.temporaryTestDirectory)
+        let project = try await makeProject(root: root)
+        let generator = generator(root: root, project: project)
+
+        let sources = try await hash(target(project: project, generator: generator, contents: [.sources]), project: project)
+        let mixed = try await hash(
+            target(project: project, generator: generator, contents: [.sources, .resources]),
+            project: project
+        )
+
+        #expect(sources != mixed)
+    }
+
+    @Test(.inTemporaryDirectory)
     func hashing_never_runs_a_generator() async throws {
         let root = try #require(FileSystem.temporaryTestDirectory)
         let project = try await makeProject(root: root)
@@ -148,13 +163,23 @@ struct TargetContentHasherCodeGeneratorTests {
         )
     }
 
-    private func target(project: AbsolutePath, generator: CodeGenerator?) -> Target {
+    private func target(
+        project: AbsolutePath,
+        generator: CodeGenerator?,
+        contents: Set<BuildableFolderContent>? = nil
+    ) -> Target {
         let output = CodeGeneratorLayout.targetOutputDirectory(projectPath: project, target: "AccountUI", generator: "strings")
         return .test(
             name: "AccountUI",
             product: .staticFramework,
             buildableFolders: generator == nil ? [] : [
-                BuildableFolder(path: output, exceptions: .init(exceptions: []), resolvedFiles: [], isCodeGeneratorOutput: true),
+                BuildableFolder(
+                    path: output,
+                    exceptions: .init(exceptions: []),
+                    resolvedFiles: [],
+                    contents: contents,
+                    isCodeGeneratorOutput: true
+                ),
             ],
             codeGenerators: generator.map { [$0] } ?? []
         )
