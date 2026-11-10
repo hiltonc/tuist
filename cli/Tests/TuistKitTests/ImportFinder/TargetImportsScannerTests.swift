@@ -256,7 +256,7 @@ struct TargetImportsScannerTests {
 }
 
 private func generatedFolder(_ path: AbsolutePath) -> BuildableFolder {
-    BuildableFolder(path: path, exceptions: BuildableFolderExceptions(exceptions: []), resolvedFiles: [], isGenerated: true)
+    BuildableFolder(path: path, exceptions: BuildableFolderExceptions(exceptions: []), resolvedFiles: [], isCodeGeneratorOutput: true)
 }
 
 private actor ConcurrentSourceCodeReader {

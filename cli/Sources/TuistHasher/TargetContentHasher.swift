@@ -240,7 +240,7 @@ public struct TargetContentHasher: TargetContentHashing { // swiftlint:disable:t
 
         let hashingFilesFilter = HashingFilesFilter()
         let buildableFolderHashes = try await graphTarget.target
-            .buildableFolders.filter { !$0.isGenerated }.sorted(by: { $0.path < $1.path })
+            .buildableFolders.filter { !$0.isCodeGeneratorOutput }.sorted(by: { $0.path < $1.path })
             .map { buildableFolder in
                 let resolvedFiles = buildableFolder.resolvedFiles
                     .filter { hashingFilesFilter($0.path) }
@@ -253,7 +253,11 @@ public struct TargetContentHasher: TargetContentHashing { // swiftlint:disable:t
                 let publicHeaders = buildableFolder.exceptions.flatMap(\.publicHeaders)
                 let privateHeaders = buildableFolder.exceptions.flatMap(\.privateHeaders)
 
-                return try await buildableFiles.concurrentMap { buildableFile in
+                let declaredContentsHashes = try buildableFolder.contents.map {
+                    [try contentHasher.hash(["declared-contents"] + $0.map(\.rawValue).sorted())]
+                } ?? []
+
+                return try await declaredContentsHashes + buildableFiles.concurrentMap { buildableFile in
                     let fileHash = try await contentHasher.hash(path: buildableFile.path)
                     let compilerFlagsHash = try contentHasher.hash(
                         buildableFile.compilerFlags ?? ""

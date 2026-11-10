@@ -29,7 +29,7 @@ struct CodeGeneratorWorkspaceMapperTests {
         #expect(folders.map(\.path) == ["assets", "strings"].map {
             CodeGeneratorLayout.targetOutputDirectory(projectPath: core, target: "AccountUI", generator: $0)
         })
-        #expect(folders.allSatisfy { $0.isGenerated && $0.resolvedFiles.isEmpty })
+        #expect(folders.allSatisfy { $0.isCodeGeneratorOutput && $0.resolvedFiles.isEmpty })
     }
 
     @Test
@@ -58,7 +58,7 @@ struct CodeGeneratorWorkspaceMapperTests {
         #expect(mappedApp.targets["App"]?.buildableFolders.map(\.path) == [
             CodeGeneratorLayout.producerOutputDirectory(consumerProjectPath: app, producer: "GQLCodegen", consumer: "App"),
         ])
-        #expect(mappedApp.targets["App"]?.buildableFolders.first?.isGenerated == true)
+        #expect(mappedApp.targets["App"]?.buildableFolders.first?.isCodeGeneratorOutput == true)
         #expect(mappedCore.targets["GQLCodegen"]?.destinations == [.iPhone, .iPad, .mac])
     }
 

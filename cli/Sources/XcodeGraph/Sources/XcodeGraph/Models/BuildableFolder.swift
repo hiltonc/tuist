@@ -34,24 +34,32 @@ public struct BuildableFolder: Sendable, Codable, Equatable, Hashable {
     /// The files resolved from this buildable folder, each with any per-file compiler flags.
     public var resolvedFiles: [BuildableFolderFile]
 
-    /// Whether the folder holds a code generator's output, which counts as sources whether or not the generator has run.
-    public var isGenerated: Bool
+    /// What the folder declares it will contain. When set, generation classifies the folder by it instead of by
+    /// `resolvedFiles`, so the result doesn't depend on whether the files exist yet.
+    public var contents: Set<BuildableFolderContent>?
+
+    /// Whether a code generator writes the folder. Its files are covered by the generator's action hash, not the
+    /// target's content hash.
+    public var isCodeGeneratorOutput: Bool
 
     /// Creates a new `BuildableFolder` instance.
     /// - Parameters:
     ///   - path: The absolute path to the buildable folder.
     ///   - exceptions: The set of exceptions (such as excluded files or custom compiler flags) for the folder.
     ///   - resolvedFiles: The list of files resolved from the folder, each file optionally having compiler flags.
-    ///   - isGenerated: Whether the folder holds a code generator's output.
+    ///   - contents: What the folder declares it will contain, or `nil` to classify it by its files.
+    ///   - isCodeGeneratorOutput: Whether a code generator writes the folder.
     public init(
         path: AbsolutePath,
         exceptions: BuildableFolderExceptions,
         resolvedFiles: [BuildableFolderFile],
-        isGenerated: Bool = false
+        contents: Set<BuildableFolderContent>? = nil,
+        isCodeGeneratorOutput: Bool = false
     ) {
         self.path = path
         self.exceptions = exceptions
         self.resolvedFiles = resolvedFiles
-        self.isGenerated = isGenerated
+        self.contents = contents
+        self.isCodeGeneratorOutput = isCodeGeneratorOutput
     }
 }

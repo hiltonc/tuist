@@ -52,7 +52,8 @@ public struct CodeGeneratorWorkspaceMapper: WorkspaceMapping {
                     path: output.directory,
                     exceptions: BuildableFolderExceptions(exceptions: []),
                     resolvedFiles: [],
-                    isGenerated: true
+                    contents: [.sources],
+                    isCodeGeneratorOutput: true
                 ))
                 if action.isMultiTarget, !consumer.declaresDependency(
                     on: action.targetName,

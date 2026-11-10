@@ -154,7 +154,7 @@ struct TargetContentHasherCodeGeneratorTests {
             name: "AccountUI",
             product: .staticFramework,
             buildableFolders: generator == nil ? [] : [
-                BuildableFolder(path: output, exceptions: .init(exceptions: []), resolvedFiles: [], isGenerated: true),
+                BuildableFolder(path: output, exceptions: .init(exceptions: []), resolvedFiles: [], isCodeGeneratorOutput: true),
             ],
             codeGenerators: generator.map { [$0] } ?? []
         )

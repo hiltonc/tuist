@@ -59,7 +59,7 @@
         ) async throws -> Set<String> {
             var filesToScan = target.sources.map(\.path) + target.buildableFolders.flatMap(\.resolvedFiles).map(\.path)
                 .filter { Target.validSourceExtensions.contains($0.extension ?? "") }
-            for folder in target.buildableFolders where folder.isGenerated {
+            for folder in target.buildableFolders where folder.isCodeGeneratorOutput {
                 filesToScan.append(contentsOf: try await generatedSourceFiles(in: folder, of: target))
             }
             if let headers = target.headers {
