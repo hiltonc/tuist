@@ -1,0 +1,3 @@
+query AccountQuery($id: ID!) {
+  account(id: $id) { id balance }
+}

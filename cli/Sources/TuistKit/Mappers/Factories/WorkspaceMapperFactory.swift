@@ -1,5 +1,6 @@
 import Foundation
 import TSCUtility
+import TuistCodeGen
 import TuistConfig
 import TuistCore
 import TuistDependencies
@@ -46,6 +47,9 @@ public struct WorkspaceMapperFactory: WorkspaceMapperFactorying {
         tuist: Tuist
     ) -> [WorkspaceMapping] {
         var mappers: [WorkspaceMapping] = []
+
+        // First, so project mappers see code generator output attached to its consumers.
+        mappers.append(CodeGeneratorWorkspaceMapper())
 
         mappers.append(
             ProjectWorkspaceMapper(mapper: projectMapper)

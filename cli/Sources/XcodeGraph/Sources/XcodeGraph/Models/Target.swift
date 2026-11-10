@@ -75,6 +75,13 @@ public struct Target: Equatable, Hashable, Comparable, Codable, Sendable {
     public var buildableFolders: [BuildableFolder]
     public var foreignBuild: ForeignBuild?
 
+    /// Generators that produce sources for this target.
+    public var codeGenerators: [CodeGenerator]
+
+    /// Set when this is a code generation target, whose generator produces sources for the targets in
+    /// ``CodeGenerator/outputs``. It builds and links nothing.
+    public var codegen: CodeGenerator?
+
     // MARK: - Init
 
     public init(
@@ -110,7 +117,9 @@ public struct Target: Equatable, Hashable, Comparable, Codable, Sendable {
         type: TargetType = .local,
         packages: [AbsolutePath] = [],
         buildableFolders: [BuildableFolder] = [],
-        foreignBuild: ForeignBuild? = nil
+        foreignBuild: ForeignBuild? = nil,
+        codeGenerators: [CodeGenerator] = [],
+        codegen: CodeGenerator? = nil
     ) {
         self.name = name
         self.product = product
@@ -145,6 +154,8 @@ public struct Target: Equatable, Hashable, Comparable, Codable, Sendable {
         self.packages = packages
         self.buildableFolders = buildableFolders
         self.foreignBuild = foreignBuild
+        self.codeGenerators = codeGenerators
+        self.codegen = codegen
     }
 
     /// Given a target name, it obtains the product name by turning "-" characters into "_" and "/" into "_"
@@ -156,7 +167,7 @@ public struct Target: Equatable, Hashable, Comparable, Codable, Sendable {
     }
 
     public var isAggregate: Bool {
-        foreignBuild != nil
+        foreignBuild != nil || codegen != nil
     }
 
     /// Target can be included in the link phase of other targets
@@ -450,7 +461,9 @@ public struct Target: Equatable, Hashable, Comparable, Codable, Sendable {
             mergeable: Bool = false,
             metadata: TargetMetadata = .test(),
             buildableFolders: [BuildableFolder] = [],
-            foreignBuild: ForeignBuild? = nil
+            foreignBuild: ForeignBuild? = nil,
+            codeGenerators: [CodeGenerator] = [],
+            codegen: CodeGenerator? = nil
         ) -> Target {
             Target(
                 name: name,
@@ -481,7 +494,9 @@ public struct Target: Equatable, Hashable, Comparable, Codable, Sendable {
                 mergeable: mergeable,
                 metadata: metadata,
                 buildableFolders: buildableFolders,
-                foreignBuild: foreignBuild
+                foreignBuild: foreignBuild,
+                codeGenerators: codeGenerators,
+                codegen: codegen
             )
         }
 
@@ -514,7 +529,9 @@ public struct Target: Equatable, Hashable, Comparable, Codable, Sendable {
             mergeable: Bool = false,
             metadata: TargetMetadata = .test(),
             buildableFolders: [BuildableFolder] = [],
-            foreignBuild: ForeignBuild? = nil
+            foreignBuild: ForeignBuild? = nil,
+            codeGenerators: [CodeGenerator] = [],
+            codegen: CodeGenerator? = nil
         ) -> Target {
             Target(
                 name: name,
@@ -545,7 +562,9 @@ public struct Target: Equatable, Hashable, Comparable, Codable, Sendable {
                 mergeable: mergeable,
                 metadata: metadata,
                 buildableFolders: buildableFolders,
-                foreignBuild: foreignBuild
+                foreignBuild: foreignBuild,
+                codeGenerators: codeGenerators,
+                codegen: codegen
             )
         }
 

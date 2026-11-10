@@ -1552,7 +1552,7 @@ import XcodeGraph
 #if canImport(TuistCacheEE)
     extension Target {
         fileprivate var isXCFrameworkCacheableProduct: Bool {
-            [
+            codegen == nil && [
                 .framework,
                 .staticFramework,
                 .staticLibrary,
