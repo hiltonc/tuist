@@ -117,6 +117,13 @@
                     dependency.target.product != .macro
                 }
                 .filter { dependency in
+                    // Code generation adds this edge so the consumer's hash and build follow its producer, which
+                    // builds no module the consumer could import.
+                    !(dependency.target.codegen?.outputs.contains {
+                        $0.projectPath == target.project.path && $0.target == target.target.name
+                    } ?? false)
+                }
+                .filter { dependency in
                     switch target.target.product {
                     case .app, .watch2AppContainer:
                         if excludeEmbeddableWatchApps, dependency.target.isEmbeddableWatchApplication() {

@@ -8,7 +8,8 @@ import TuistSupport
 public struct GeneratorPaths {
     /// Path to the directory that contains the manifest being loaded.
     let manifestDirectory: AbsolutePath
-    private let rootDirectory: AbsolutePath
+    /// Path to the repository root, which `//` paths are relative to.
+    let rootDirectory: AbsolutePath
 
     /// Creates an instance with its attributes.
     /// - Parameter manifestDirectory: Path to the directory that contains the manifest being loaded.

@@ -1172,4 +1172,123 @@ struct InspectDependenciesCommandServiceTests {
         // When / Then
         try await subject.run(path: projectPath.pathString, inspectionTypes: [.redundant])
     }
+
+    // MARK: - Code Generation
+
+    @Test(arguments: [[.sources], [.resources], [.sources, .resources]] as [Set<BuildableFolderContent>])
+    func runDoesntFlagDependencyOnCodeGenerationProducer(contents: Set<BuildableFolderContent>) async throws {
+        // Given
+        let path = try AbsolutePath(validating: "/project")
+        let config = Tuist.test()
+        let producer = Target.test(
+            name: "GQLCodegen",
+            product: .staticLibrary,
+            codegen: .test(outputs: [.init(projectPath: path, target: "Feature", contents: contents)])
+        )
+        let feature = Target.test(name: "Feature", product: .framework, dependencies: [.target(name: producer.name)])
+        let project = Project.test(path: path, targets: [producer, feature])
+        let graph = Graph.test(
+            path: path,
+            projects: [path: project],
+            dependencies: [
+                .target(name: feature.name, path: path): [.target(name: producer.name, path: path)],
+            ]
+        )
+
+        given(configLoader).loadConfig(path: .value(path)).willReturn(config)
+        given(generatorFactory).defaultGenerator(config: .value(config), includedTargets: .any, coverage: .any)
+            .willReturn(generator)
+        given(generator).load(path: .value(path), options: .any).willReturn(graph)
+        given(targetScanner).imports(for: .value(producer), reachableModules: .any).willReturn(Set([]))
+        given(targetScanner).imports(for: .value(feature), reachableModules: .any).willReturn(Set([]))
+
+        // When / Then
+        try await subject.run(path: path.pathString, inspectionTypes: [.implicit, .redundant])
+    }
+
+    @Test
+    func runFlagsRedundantDependencyOfCodeGenerationConsumer() async throws {
+        // Given
+        let path = try AbsolutePath(validating: "/project")
+        let config = Tuist.test()
+        let producer = Target.test(
+            name: "GQLCodegen",
+            product: .staticLibrary,
+            codegen: .test(outputs: [.init(projectPath: path, target: "Feature")])
+        )
+        let unusedFramework = Target.test(name: "UnusedFramework", product: .framework)
+        let feature = Target.test(
+            name: "Feature",
+            product: .framework,
+            dependencies: [.target(name: producer.name), .target(name: unusedFramework.name)]
+        )
+        let project = Project.test(path: path, targets: [producer, unusedFramework, feature])
+        let graph = Graph.test(
+            path: path,
+            projects: [path: project],
+            dependencies: [
+                .target(name: feature.name, path: path): [
+                    .target(name: producer.name, path: path),
+                    .target(name: unusedFramework.name, path: path),
+                ],
+            ]
+        )
+
+        given(configLoader).loadConfig(path: .value(path)).willReturn(config)
+        given(generatorFactory).defaultGenerator(config: .value(config), includedTargets: .any, coverage: .any)
+            .willReturn(generator)
+        given(generator).load(path: .value(path), options: .any).willReturn(graph)
+        given(targetScanner).imports(for: .value(producer), reachableModules: .any).willReturn(Set([]))
+        given(targetScanner).imports(for: .value(unusedFramework), reachableModules: .any).willReturn(Set([]))
+        given(targetScanner).imports(for: .value(feature), reachableModules: .any).willReturn(Set([]))
+
+        // When / Then
+        await #expect(
+            throws: InspectImportsServiceError.issuesFound(
+                redundant: [.init(target: feature.productName, dependencies: [unusedFramework.productName])]
+            )
+        ) {
+            try await subject.run(path: path.pathString, inspectionTypes: [.redundant])
+        }
+    }
+
+    @Test
+    func runFlagsDependencyOnCodeGenerationTargetThatDoesntProduceForTheDependent() async throws {
+        // Given
+        let path = try AbsolutePath(validating: "/project")
+        let config = Tuist.test()
+        let producer = Target.test(
+            name: "GQLCodegen",
+            product: .staticLibrary,
+            codegen: .test(outputs: [.init(projectPath: path, target: "Schema")])
+        )
+        let schema = Target.test(name: "Schema", product: .framework, dependencies: [.target(name: producer.name)])
+        let feature = Target.test(name: "Feature", product: .framework, dependencies: [.target(name: producer.name)])
+        let project = Project.test(path: path, targets: [producer, schema, feature])
+        let graph = Graph.test(
+            path: path,
+            projects: [path: project],
+            dependencies: [
+                .target(name: schema.name, path: path): [.target(name: producer.name, path: path)],
+                .target(name: feature.name, path: path): [.target(name: producer.name, path: path)],
+            ]
+        )
+
+        given(configLoader).loadConfig(path: .value(path)).willReturn(config)
+        given(generatorFactory).defaultGenerator(config: .value(config), includedTargets: .any, coverage: .any)
+            .willReturn(generator)
+        given(generator).load(path: .value(path), options: .any).willReturn(graph)
+        given(targetScanner).imports(for: .value(producer), reachableModules: .any).willReturn(Set([]))
+        given(targetScanner).imports(for: .value(schema), reachableModules: .any).willReturn(Set([]))
+        given(targetScanner).imports(for: .value(feature), reachableModules: .any).willReturn(Set([]))
+
+        // When / Then
+        await #expect(
+            throws: InspectImportsServiceError.issuesFound(
+                redundant: [.init(target: feature.productName, dependencies: [producer.productName])]
+            )
+        ) {
+            try await subject.run(path: path.pathString, inspectionTypes: [.redundant])
+        }
+    }
 }

@@ -412,6 +412,9 @@
                 "synthesized-files": {
                   "text": "Synthesized files"
                 },
+                "code-generators": {
+                  "text": "Code generators"
+                },
                 "dynamic-configuration": {
                   "text": "Dynamic configuration"
                 },

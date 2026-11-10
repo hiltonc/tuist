@@ -2,6 +2,7 @@
     import FileSystem
     import Mockable
     import Path
+    import TuistAlert
     import XcodeGraph
 
     @Mockable
@@ -21,6 +22,7 @@
 
     struct TargetImportsScanner: TargetImportsScanning {
         private let importSourceCodeScanner: ImportSourceCodeScanner
+        private let fileSystem: FileSysteming
         private let maxConcurrentFileScans: Int
         private let sourceCodeReader: (AbsolutePath) async throws -> String?
 
@@ -31,6 +33,7 @@
         ) {
             self.init(
                 importSourceCodeScanner: importSourceCodeScanner,
+                fileSystem: fileSystem,
                 maxConcurrentFileScans: maxConcurrentFileScans
             ) { path in
                 guard try await fileSystem.exists(path) else { return nil }
@@ -40,10 +43,12 @@
 
         init(
             importSourceCodeScanner: ImportSourceCodeScanner = ImportSourceCodeScanner(),
+            fileSystem: FileSysteming = FileSystem(),
             maxConcurrentFileScans: Int = 100,
             sourceCodeReader: @escaping (AbsolutePath) async throws -> String?
         ) {
             self.importSourceCodeScanner = importSourceCodeScanner
+            self.fileSystem = fileSystem
             self.maxConcurrentFileScans = max(1, maxConcurrentFileScans)
             self.sourceCodeReader = sourceCodeReader
         }
@@ -54,6 +59,11 @@
         ) async throws -> Set<String> {
             var filesToScan = target.sources.map(\.path) + target.buildableFolders.flatMap(\.resolvedFiles).map(\.path)
                 .filter { Target.validSourceExtensions.contains($0.extension ?? "") }
+            for folder in target.buildableFolders
+                where folder.isCodeGeneratorOutput && folder.contents?.contains(.sources) != false
+            {
+                filesToScan.append(contentsOf: try await generatedSourceFiles(in: folder, of: target))
+            }
             if let headers = target.headers {
                 filesToScan.append(contentsOf: headers.private)
                 filesToScan.append(contentsOf: headers.public)
@@ -67,6 +77,22 @@
             )
             imports.remove(target.productName)
             return imports
+        }
+
+        /// The graph attaches generator output with no resolved files, and inspecting never runs generators, so this
+        /// reads whatever output the last generate, build, or test left.
+        private func generatedSourceFiles(in folder: BuildableFolder, of target: XcodeGraph.Target) async throws
+            -> [AbsolutePath]
+        {
+            guard try await fileSystem.exists(folder.path, isDirectory: true) else {
+                AlertController.current.warning(.alert(
+                    "The code generator output of target '\(target.name)' at \(folder.path.pathString) doesn't exist, so its imports weren't inspected. Run 'tuist generate' to produce it."
+                ))
+                return []
+            }
+            return try await fileSystem.glob(directory: folder.path, include: ["**/*"]).collect()
+                .filter { Target.validSourceExtensions.contains($0.extension ?? "") }
+                .sorted()
         }
 
         private func matchPattern(

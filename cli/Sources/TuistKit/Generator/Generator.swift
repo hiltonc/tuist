@@ -3,11 +3,13 @@ import Foundation
 import Mockable
 import Path
 import ProjectDescription
+import TuistCodeGen
 import TuistConfig
 import TuistConfigLoader
 import TuistCore
 import TuistDependencies
 import TuistGenerator
+import TuistHasher
 import TuistLogging
 import TuistPlugin
 import TuistRootDirectoryLocator
@@ -37,14 +39,17 @@ public class Generator: Generating {
     private let sideEffectDescriptorExecutor: SideEffectDescriptorExecuting
     private let configLoader: ConfigLoading
     private let manifestGraphLoader: ManifestGraphLoading
+    private let codeGeneratorMaterializer: CodeGeneratorMaterializing
     private var lintingIssues: [LintingIssue] = []
 
     public init(
-        manifestGraphLoader: ManifestGraphLoading
+        manifestGraphLoader: ManifestGraphLoading,
+        codeGeneratorMaterializer: CodeGeneratorMaterializing = CodeGeneratorMaterializer()
     ) {
         sideEffectDescriptorExecutor = SideEffectDescriptorExecutor()
         configLoader = ConfigLoader()
         self.manifestGraphLoader = manifestGraphLoader
+        self.codeGeneratorMaterializer = codeGeneratorMaterializer
     }
 
     public func generate(
@@ -56,6 +61,15 @@ public class Generator: Generating {
     }
 
     public func generateWithGraph(
+        path: AbsolutePath,
+        options: TuistGeneratedProjectOptions.GenerationOptions?
+    ) async throws -> (AbsolutePath, Graph, MapperEnvironment) {
+        try await CodeGeneratorScriptInputCache.scoped {
+            try await generateWithGraphInScope(path: path, options: options)
+        }
+    }
+
+    private func generateWithGraphInScope(
         path: AbsolutePath,
         options: TuistGeneratedProjectOptions.GenerationOptions?
     ) async throws -> (AbsolutePath, Graph, MapperEnvironment) {
@@ -85,6 +99,8 @@ public class Generator: Generating {
 
         // Mapper side effects
         try await sideEffectDescriptorExecutor.execute(sideEffects: sideEffects)
+
+        try await codeGeneratorMaterializer.materialize(graph: graph)
 
         // Post Generate Actions
         try await postGenerationActions(
@@ -117,10 +133,9 @@ public class Generator: Generating {
         Logger.current.notice("Loading and constructing the graph", metadata: .section)
         Logger.current.notice("It might take a while if the cache is empty")
 
-        let (graph, sideEffectDescriptors, environment, issues) = try await manifestGraphLoader.load(
-            path: path,
-            disableSandbox: options?.disableSandbox ?? true
-        )
+        let (graph, sideEffectDescriptors, environment, issues) = try await CodeGeneratorScriptInputCache.scoped {
+            try await manifestGraphLoader.load(path: path, disableSandbox: options?.disableSandbox ?? true)
+        }
 
         lintingIssues.append(contentsOf: issues)
         return (graph, sideEffectDescriptors, environment)

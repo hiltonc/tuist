@@ -2,10 +2,12 @@ import Foundation
 import Path
 import TuistAlert
 import TuistAutomation
+import TuistCodeGen
 import TuistConfig
 import TuistConfigLoader
 import TuistCore
 import TuistEnvironment
+import TuistHasher
 import TuistLoader
 import TuistLogging
 import TuistServer
@@ -36,6 +38,7 @@ enum BuildServiceError: LocalizedError {
 
 public struct BuildService {
     private let generatorFactory: GeneratorFactorying
+    private let codeGeneratorMaterializer: CodeGeneratorMaterializing
     private let cacheStorageFactory: CacheStorageFactorying
     private let buildGraphInspector: BuildGraphInspecting
     private let targetBuilder: TargetBuilding
@@ -46,8 +49,10 @@ public struct BuildService {
         cacheStorageFactory: CacheStorageFactorying,
         buildGraphInspector: BuildGraphInspecting = BuildGraphInspector(),
         targetBuilder: TargetBuilding = TargetBuilder(),
-        configLoader: ConfigLoading = ConfigLoader()
+        configLoader: ConfigLoading = ConfigLoader(),
+        codeGeneratorMaterializer: CodeGeneratorMaterializing = CodeGeneratorMaterializer()
     ) {
+        self.codeGeneratorMaterializer = codeGeneratorMaterializer
         self.generatorFactory = generatorFactory
         self.cacheStorageFactory = cacheStorageFactory
         self.buildGraphInspector = buildGraphInspector
@@ -98,10 +103,16 @@ public struct BuildService {
                 options: config.project.generatedProject?.generationOptions
             ).1
         } else {
-            graph = try await generator.load(
-                path: path,
-                options: config.project.generatedProject?.generationOptions
-            )
+            graph = try await CodeGeneratorScriptInputCache.scoped {
+                let graph = try await generator.load(
+                    path: path,
+                    options: config.project.generatedProject?.generationOptions
+                )
+                if !generateOnly {
+                    try await codeGeneratorMaterializer.materialize(graph: graph)
+                }
+                return graph
+            }
         }
 
         if generateOnly {
