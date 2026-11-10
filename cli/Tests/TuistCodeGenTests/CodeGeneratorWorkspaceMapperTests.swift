@@ -3,6 +3,7 @@ import FileSystemTesting
 import Foundation
 import Path
 import Testing
+import TuistGenerator
 import XcodeGraph
 @testable import TuistCodeGen
 @testable import TuistCore
@@ -376,6 +377,11 @@ struct CodeGeneratorWorkspaceMapperTests {
             try await fileSystem.makeDirectory(at: state.parentDirectory)
             try await fileSystem.writeText("hash", at: state)
         }
+        let outside = temporaryDirectory.appending(components: "Outside", "Kept.swift")
+        try await fileSystem.makeDirectory(at: outside.parentDirectory)
+        try await fileSystem.writeText("", at: outside)
+        let linkedTarget = kept.parentDirectory.parentDirectory.parentDirectory.appending(component: "Linked")
+        try await fileSystem.createSymbolicLink(from: linkedTarget, to: outside.parentDirectory)
         let target = Target.test(
             name: "AccountUI",
             product: .staticFramework,
@@ -383,13 +389,20 @@ struct CodeGeneratorWorkspaceMapperTests {
         )
 
         let (_, sideEffects) = try await subject.map(workspace: workspace([.test(path: project, targets: [target])]))
+        try await SideEffectDescriptorExecutor().execute(sideEffects: sideEffects)
 
-        #expect(sideEffects == [
-            .directory(DirectoryDescriptor(path: staleGenerator.parentDirectory, state: .absent)),
-            .directory(DirectoryDescriptor(path: staleTarget.parentDirectory.parentDirectory, state: .absent)),
-            .directory(DirectoryDescriptor(path: staleProducer.parentDirectory.parentDirectory, state: .absent)),
-            .file(FileDescriptor(path: staleState, state: .absent)),
-        ])
+        for removed in [
+            staleGenerator.parentDirectory,
+            staleTarget.parentDirectory.parentDirectory,
+            staleProducer.parentDirectory.parentDirectory,
+            staleState,
+            linkedTarget,
+        ] {
+            #expect(try await !fileSystem.exists(removed))
+        }
+        for remaining in [kept, keptState, outside] {
+            #expect(try await fileSystem.exists(remaining))
+        }
     }
 
     // MARK: - Helpers

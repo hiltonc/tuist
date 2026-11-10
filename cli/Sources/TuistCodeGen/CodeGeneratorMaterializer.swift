@@ -68,10 +68,17 @@ public struct CodeGeneratorMaterializer: CodeGeneratorMaterializing {
         }
         guard !actions.isEmpty else { return }
 
-        let stagingDirectories = Set(actions.flatMap { action in
-            ([action.projectPath] + action.outputs.map(\.projectPath)).map(stagingRoot)
-        })
-        try await remove(stagingDirectories)
+        let projectPaths = Set(actions.flatMap { [$0.projectPath] + $0.outputs.map(\.projectPath) })
+        for projectPath in projectPaths {
+            try unlinkSymbolicLinks(through: stagingRoot(projectPath: projectPath), projectPath: projectPath)
+        }
+        try await remove(Set(projectPaths.map(stagingRoot)))
+        for action in actions {
+            try unlinkSymbolicLinks(through: action.statePath.parentDirectory, projectPath: action.projectPath)
+            for output in action.outputs {
+                try unlinkSymbolicLinks(through: output.directory, projectPath: output.projectPath)
+            }
+        }
 
         Logger.current.notice("Running code generators", metadata: .section)
         let skipped = try await actions.concurrentMap { action in
@@ -225,6 +232,21 @@ public struct CodeGeneratorMaterializer: CodeGeneratorMaterializing {
         }
         try await fileSystem.makeDirectory(at: outputDirectory.parentDirectory)
         try await fileSystem.move(from: stagingDirectory, to: outputDirectory)
+    }
+
+    /// Unlinks every symbolic link from the project's code generation directory down to `directory`, so nothing is
+    /// written or cleaned up through one.
+    private func unlinkSymbolicLinks(through directory: AbsolutePath, projectPath: AbsolutePath) throws {
+        var current = CodeGeneratorLayout.codeGenDirectory(projectPath: projectPath)
+        var components = directory.relative(to: current).components.filter { $0 != "." }[...]
+        while true {
+            let attributes = try? FileManager.default.attributesOfItem(atPath: current.pathString)
+            if attributes?[.type] as? FileAttributeType == .typeSymbolicLink {
+                try FileManager.default.removeItem(atPath: current.pathString)
+            }
+            guard let component = components.popFirst() else { return }
+            current = current.appending(component: component)
+        }
     }
 
     private func remove(_ directories: Set<AbsolutePath>) async throws {

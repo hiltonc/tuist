@@ -438,6 +438,26 @@ struct CodeGeneratorMaterializerTests {
     }
 
     @Test(.inTemporaryDirectory, .withMockedLogger())
+    func materialize_replaces_a_symbolic_link_in_the_output_path_instead_of_writing_through_it() async throws {
+        let root = try #require(FileSystem.temporaryTestDirectory)
+        let project = try await makeProject(root: root)
+        let generator = perTargetGenerator(root: root, script: """
+        echo "let a = 1" > "$TUIST_OUTPUT_SOURCES_DIR/A.swift"
+        """)
+        let output = outputDirectory(project: project, generator: generator)
+        let outside = root.appending(component: "Outside")
+        try await fileSystem.makeDirectory(at: outside)
+        try await fileSystem.writeText("", at: outside.appending(component: "Kept.swift"))
+        try await fileSystem.makeDirectory(at: output.parentDirectory.parentDirectory)
+        try await fileSystem.createSymbolicLink(from: output.parentDirectory, to: outside)
+
+        try await subject.materialize(graph: graph(project: project, codeGenerators: [generator]))
+
+        #expect(try await fileSystem.contentsOfDirectory(outside).map(\.basename) == ["Kept.swift"])
+        #expect(try await fileSystem.readTextFile(at: output.appending(component: "A.swift")) == "let a = 1\n")
+    }
+
+    @Test(.inTemporaryDirectory, .withMockedLogger())
     func materialize_leaves_an_unchanged_consumer_share_of_a_code_generation_target_in_place() async throws {
         let root = try #require(FileSystem.temporaryTestDirectory)
         let project = try await makeProject(root: root)
