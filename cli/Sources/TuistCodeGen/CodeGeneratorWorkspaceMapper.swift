@@ -1,4 +1,3 @@
-import FileSystem
 import Foundation
 import Path
 import TuistConstants
@@ -24,11 +23,7 @@ public enum CodeGeneratorWorkspaceMapperError: FatalError, Equatable {
 /// generation target depend on it so the content hasher, which walks declared dependencies, moves the consumer's hash
 /// with the producer's.
 public struct CodeGeneratorWorkspaceMapper: WorkspaceMapping {
-    private let fileSystem: FileSysteming
-
-    public init(fileSystem: FileSysteming = FileSystem()) {
-        self.fileSystem = fileSystem
-    }
+    public init() {}
 
     public func map(workspace: WorkspaceWithProjects) async throws -> (WorkspaceWithProjects, [SideEffectDescriptor]) {
         var workspace = workspace
@@ -36,7 +31,7 @@ public struct CodeGeneratorWorkspaceMapper: WorkspaceMapping {
         let declaringProjects = workspace.projects.filter { project in
             project.targets.values.contains(where: \.declaresCodeGeneration)
         }
-        let sideEffects = try await staleOutputDeletions(projects: workspace.projects)
+        let sideEffects = staleOutputCleanups(projects: workspace.projects)
         guard !declaringProjects.isEmpty else { return (workspace, sideEffects) }
 
         let actions = declaringProjects.flatMap { project in
@@ -258,8 +253,8 @@ public struct CodeGeneratorWorkspaceMapper: WorkspaceMapping {
 
     // MARK: - Pruning
 
-    /// Deletes output and state no declaration owns.
-    private func staleOutputDeletions(projects: [Project]) async throws -> [SideEffectDescriptor] {
+    /// Describes the removal of output and state no declaration owns.
+    private func staleOutputCleanups(projects: [Project]) -> [SideEffectDescriptor] {
         let actions = projects.flatMap { project in
             project.targets.values.flatMap { CodeGeneratorAction.actions(for: $0, projectPath: project.path) }
         }
@@ -271,44 +266,23 @@ public struct CodeGeneratorWorkspaceMapper: WorkspaceMapping {
             expected.formUnion(action.statePath.ancestorsAndSelf)
         }
 
-        var sideEffects: [SideEffectDescriptor] = []
-        for project in projects where project.type == .local {
+        return projects.filter { $0.type == .local }.flatMap { project in
             let codeGenDirectory = CodeGeneratorLayout.codeGenDirectory(projectPath: project.path)
-            guard try await fileSystem.exists(codeGenDirectory, isDirectory: true) else { continue }
-            let layout: [(components: [String], depth: Int)] = [
-                ([CodeGeneratorLayout.targetsDirectoryName], 2),
-                ([CodeGeneratorLayout.producersDirectoryName], 2),
-                ([CodeGeneratorLayout.stateDirectoryName, CodeGeneratorLayout.targetsDirectoryName], 2),
-                ([CodeGeneratorLayout.stateDirectoryName, CodeGeneratorLayout.producersDirectoryName], 1),
+            let layout: [(components: [String], include: [String])] = [
+                ([CodeGeneratorLayout.targetsDirectoryName], ["*", "*/*"]),
+                ([CodeGeneratorLayout.producersDirectoryName], ["*", "*/*"]),
+                ([CodeGeneratorLayout.stateDirectoryName, CodeGeneratorLayout.targetsDirectoryName], ["*", "*/*"]),
+                ([CodeGeneratorLayout.stateDirectoryName, CodeGeneratorLayout.producersDirectoryName], ["*"]),
             ]
-            for (components, depth) in layout {
-                sideEffects += try await staleEntries(
-                    in: codeGenDirectory.appending(components: components),
-                    depth: depth,
-                    expected: expected
-                )
+            return layout.map { components, include in
+                let directory = codeGenDirectory.appending(components: components)
+                return SideEffectDescriptor.generatedFilesCleanup(GeneratedFilesCleanupDescriptor(
+                    directories: [directory],
+                    activeFilesByDirectory: [directory: expected.filter { $0.isDescendant(of: directory) }],
+                    include: include
+                ))
             }
         }
-        return sideEffects
-    }
-
-    private func staleEntries(in directory: AbsolutePath, depth: Int, expected: Set<AbsolutePath>) async throws
-        -> [SideEffectDescriptor]
-    {
-        guard depth > 0, try await fileSystem.exists(directory, isDirectory: true) else { return [] }
-        var sideEffects: [SideEffectDescriptor] = []
-        for entry in try await fileSystem.contentsOfDirectory(directory).sorted() where !entry.basename.hasPrefix(".") {
-            if !expected.contains(entry) {
-                sideEffects.append(
-                    try await fileSystem.exists(entry, isDirectory: true)
-                        ? .directory(DirectoryDescriptor(path: entry, state: .absent))
-                        : .file(FileDescriptor(path: entry, state: .absent))
-                )
-            } else {
-                sideEffects += try await staleEntries(in: entry, depth: depth - 1, expected: expected)
-            }
-        }
-        return sideEffects
     }
 }
 
