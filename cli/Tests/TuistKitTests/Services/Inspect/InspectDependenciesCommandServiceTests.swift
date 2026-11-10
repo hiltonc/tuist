@@ -1175,15 +1175,15 @@ struct InspectDependenciesCommandServiceTests {
 
     // MARK: - Code Generation
 
-    @Test
-    func runDoesntFlagDependencyOnCodeGenerationProducer() async throws {
+    @Test(arguments: [[.sources], [.resources], [.sources, .resources]] as [Set<BuildableFolderContent>])
+    func runDoesntFlagDependencyOnCodeGenerationProducer(contents: Set<BuildableFolderContent>) async throws {
         // Given
         let path = try AbsolutePath(validating: "/project")
         let config = Tuist.test()
         let producer = Target.test(
             name: "GQLCodegen",
             product: .staticLibrary,
-            codegen: .test(outputs: [.init(projectPath: path, target: "Feature")])
+            codegen: .test(outputs: [.init(projectPath: path, target: "Feature", contents: contents)])
         )
         let feature = Target.test(name: "Feature", product: .framework, dependencies: [.target(name: producer.name)])
         let project = Project.test(path: path, targets: [producer, feature])
