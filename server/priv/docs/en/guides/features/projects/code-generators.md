@@ -131,7 +131,7 @@ Look outputs up by `project` and `target` rather than by position. Tuist generat
 
 ## Generated resources {#generated-resources}
 
-Tuist attaches each output directory as a [buildable folder that declares its contents](/guides/features/projects/best-practices#buildable-folders-declared-contents), so the project is the same before and after a generator first runs. An output holds sources unless it says otherwise. Declare `contents` on a per-target generator or on a code generation target's output when the generator writes resources:
+Tuist attaches each output directory as a [buildable folder that declares its contents](/guides/features/projects/best-practices#buildable-folders-declared-contents), so the project is the same before and after a generator first runs. An output holds sources unless it says otherwise. When a generator writes resources, declare `contents` on the per-target generator or on the code generation target's output:
 
 ```swift
 .target(
@@ -160,7 +160,7 @@ Tuist attaches each output directory as a [buildable folder that declares its co
 )
 ```
 
-Resources follow the target's product. An app or dynamic framework copies them from the output folder. A static target moves them to its companion resource bundle, where `Bundle.module` finds them. An output that holds both sources and resources is added to both targets, and its files are routed by type. Changing an output's `contents` changes its consumer's hash but doesn't rerun the generator.
+Resources follow the target's product. An app or dynamic framework copies them from the output folder. A static target moves them to its companion resource bundle, where `Bundle.module` finds them. On a static target, an output that holds sources and resources is added to the target and its bundle, and its files are routed by type. Changing an output's `contents` changes its consumer's hash but doesn't rerun the generator.
 
 ## One input split across targets {#one-input-split-across-targets}
 

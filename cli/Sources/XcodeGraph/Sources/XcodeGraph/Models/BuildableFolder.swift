@@ -38,8 +38,7 @@ public struct BuildableFolder: Sendable, Codable, Equatable, Hashable {
     /// `resolvedFiles`, so the result doesn't depend on whether the files exist yet.
     public var contents: Set<BuildableFolderContent>?
 
-    /// Whether a code generator writes the folder. Its files are covered by the generator's action hash, not the
-    /// target's content hash.
+    /// Whether a code generator writes the folder.
     public var isCodeGeneratorOutput: Bool
 
     /// Creates a new `BuildableFolder` instance.
