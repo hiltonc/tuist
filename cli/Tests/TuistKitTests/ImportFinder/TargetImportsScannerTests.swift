@@ -2,6 +2,8 @@ import FileSystem
 import Foundation
 import Path
 import Testing
+import TuistAlert
+import TuistCore
 import TuistSupport
 import TuistTesting
 import XcodeGraph
@@ -109,6 +111,120 @@ struct TargetImportsScannerTests {
         }
     }
 
+    @Test func imports_in_code_generator_output() async throws {
+        try await fileSystem.runInTemporaryDirectory(prefix: UUID().uuidString) { temporaryDirectory in
+            // Given
+            let output = temporaryDirectory.appending(
+                components: "Derived",
+                "CodeGen",
+                "Targets",
+                "Strings",
+                "strings",
+                "Sources"
+            )
+            try await fileSystem.makeDirectory(at: output.appending(component: "Nested"))
+            try await fileSystem.writeText("import StringKeys", at: output.appending(component: "Strings.swift"))
+            try await fileSystem.writeText("import Nested", at: output.appending(components: "Nested", "Nested.swift"))
+            try await fileSystem.writeText("import NotSource", at: output.appending(component: "notes.txt"))
+            let target = Target.test(name: "Strings", buildableFolders: [generatedFolder(output)])
+
+            // When
+            let result = try await TargetImportsScanner().imports(for: target)
+
+            // Then
+            #expect(result == ["StringKeys", "Nested"])
+        }
+    }
+
+    @Test(.withScopedAlertController()) func imports_warns_when_code_generator_output_is_missing() async throws {
+        try await fileSystem.runInTemporaryDirectory(prefix: UUID().uuidString) { temporaryDirectory in
+            // Given
+            let output = temporaryDirectory.appending(
+                components: "Derived",
+                "CodeGen",
+                "Targets",
+                "Strings",
+                "strings",
+                "Sources"
+            )
+            let target = Target.test(name: "Strings", buildableFolders: [generatedFolder(output)])
+
+            // When
+            let result = try await TargetImportsScanner().imports(for: target)
+
+            // Then
+            #expect(result == [])
+            #expect(AlertController.current.warnings().map(\.message).map { $0.plain() } == [
+                "The code generator output of target 'Strings' at \(output.pathString) doesn't exist, so its imports weren't inspected. Run 'tuist generate' to produce it.",
+            ])
+        }
+    }
+
+    @Test(.withScopedAlertController()) func imports_skips_code_generator_output_that_holds_only_resources() async throws {
+        try await fileSystem.runInTemporaryDirectory(prefix: UUID().uuidString) { temporaryDirectory in
+            // Given
+            var folder = generatedFolder(temporaryDirectory.appending(components: "Derived", "CodeGen", "Sources"))
+            folder.contents = [.resources]
+            let target = Target.test(name: "Strings", buildableFolders: [folder])
+
+            // When
+            let result = try await TargetImportsScanner().imports(for: target)
+
+            // Then
+            #expect(result == [])
+            #expect(AlertController.current.warnings().isEmpty)
+        }
+    }
+
+    @Test func lint_counts_an_import_only_in_code_generator_output() async throws {
+        try await fileSystem.runInTemporaryDirectory(prefix: UUID().uuidString) { temporaryDirectory in
+            // Given
+            let project = temporaryDirectory.appending(component: "Project")
+            let declaringOutput = project.appending(components: "Derived", "CodeGen", "Targets", "Strings", "strings", "Sources")
+            let undeclaringOutput = project.appending(components: "Derived", "CodeGen", "Targets", "Other", "strings", "Sources")
+            for output in [declaringOutput, undeclaringOutput] {
+                try await fileSystem.makeDirectory(at: output)
+                try await fileSystem.writeText("import StringKeys", at: output.appending(component: "Strings.swift"))
+            }
+            let strings = Target.test(
+                name: "Strings",
+                product: .staticFramework,
+                dependencies: [.target(name: "StringKeys")],
+                buildableFolders: [generatedFolder(declaringOutput)]
+            )
+            let other = Target.test(
+                name: "Other",
+                product: .staticFramework,
+                buildableFolders: [generatedFolder(undeclaringOutput)]
+            )
+            let stringKeys = Target.test(name: "StringKeys", product: .staticFramework)
+            let graph = Graph.test(
+                path: project,
+                projects: [project: .test(path: project, targets: [strings, other, stringKeys])],
+                dependencies: [
+                    .target(name: "Strings", path: project): [.target(name: "StringKeys", path: project)],
+                ]
+            )
+            let subject = GraphImportsLinter(targetScanner: TargetImportsScanner())
+
+            // When
+            let redundant = try await subject.lint(
+                graphTraverser: GraphTraverser(graph: graph),
+                inspectType: .redundant,
+                ignoreTagsMatching: []
+            )
+            let implicit = try await subject.lint(
+                graphTraverser: GraphTraverser(graph: graph),
+                inspectType: .implicit,
+                ignoreTagsMatching: []
+            )
+
+            // Then
+            #expect(redundant == [])
+            #expect(implicit == [InspectImportsIssue(target: "Other", dependencies: ["StringKeys"])])
+        }
+    }
+
     @Test func imports_when_filesAreAbsent() async throws {
         try await fileSystem.runInTemporaryDirectory(prefix: UUID().uuidString) { temporaryDirectory in
             // Given
@@ -153,6 +269,15 @@ struct TargetImportsScannerTests {
         #expect(result == ["SecondTarget"])
         #expect(await sourceCodeReader.maxConcurrentReads <= 3)
     }
+}
+
+private func generatedFolder(_ path: AbsolutePath) -> BuildableFolder {
+    BuildableFolder(
+        path: path,
+        exceptions: BuildableFolderExceptions(exceptions: []),
+        resolvedFiles: [],
+        isCodeGeneratorOutput: true
+    )
 }
 
 private actor ConcurrentSourceCodeReader {

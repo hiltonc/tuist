@@ -8,13 +8,15 @@ import XcodeGraph
 /// Such a folder is referenced even when nothing has written to it yet (git doesn't keep empty directories, and the
 /// derived directory is cleaned on every generation), so the tool that fills it and Xcode's folder watcher find it.
 /// It must run after `DeleteDerivedDirectoryProjectMapper`, whose side effects may remove the folder.
+/// A code generator's output folder is left to the code generator materializer, which moves it into place and never
+/// writes through a symbolic link.
 public struct CreateBuildableFoldersProjectMapper: ProjectMapping {
     public init() {}
 
     public func map(project: Project) throws -> (Project, [SideEffectDescriptor]) {
         let paths = Set(
             project.targets.values.flatMap { target in
-                target.buildableFolders.filter { $0.contents != nil }.map(\.path)
+                target.buildableFolders.filter { $0.contents != nil && !$0.isCodeGeneratorOutput }.map(\.path)
             }
         )
         guard !paths.isEmpty else { return (project, []) }

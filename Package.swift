@@ -1543,6 +1543,7 @@ targets.append(contentsOf: [
             argumentParserDependency,
             mockableDependency,
             fileSystemDependency,
+            "TuistCodeGen",
             "TuistConstants",
             "TuistEnvironment",
             "TuistLogging",
@@ -1664,6 +1665,26 @@ targets.append(contentsOf: [
         ],
         path: "cli/Sources/TuistGenerator",
         exclude: ["AGENTS.md"],
+        swiftSettings: [
+            .define("MOCKING", .when(configuration: .debug)),
+        ]
+    ),
+    .target(
+        name: "TuistCodeGen",
+        dependencies: [
+            "TuistAlert",
+            "TuistConstants",
+            "TuistCore",
+            "TuistHasher",
+            "TuistLogging",
+            processDependency,
+            "TuistSupport",
+            fileSystemDependency,
+            mockableDependency,
+            pathDependency,
+            xcodeGraphDependency,
+        ],
+        path: "cli/Sources/TuistCodeGen",
         swiftSettings: [
             .define("MOCKING", .when(configuration: .debug)),
         ]

@@ -38,21 +38,27 @@ public struct BuildableFolder: Sendable, Codable, Equatable, Hashable {
     /// `resolvedFiles`.
     public var contents: Set<BuildableFolderContent>?
 
+    /// Whether a code generator writes the folder.
+    public var isCodeGeneratorOutput: Bool
+
     /// Creates a new `BuildableFolder` instance.
     /// - Parameters:
     ///   - path: The absolute path to the buildable folder.
     ///   - exceptions: The set of exceptions (such as excluded files or custom compiler flags) for the folder.
     ///   - resolvedFiles: The list of files resolved from the folder, each file optionally having compiler flags.
     ///   - contents: What the folder declares it will contain, or `nil` to classify it by its files.
+    ///   - isCodeGeneratorOutput: Whether a code generator writes the folder.
     public init(
         path: AbsolutePath,
         exceptions: BuildableFolderExceptions,
         resolvedFiles: [BuildableFolderFile],
-        contents: Set<BuildableFolderContent>? = nil
+        contents: Set<BuildableFolderContent>? = nil,
+        isCodeGeneratorOutput: Bool = false
     ) {
         self.path = path
         self.exceptions = exceptions
         self.resolvedFiles = resolvedFiles
         self.contents = contents
+        self.isCodeGeneratorOutput = isCodeGeneratorOutput
     }
 }

@@ -116,6 +116,21 @@ public struct Target: Codable, Equatable, Sendable {
     /// ``foreignBuild(name:destinations:script:inputs:output:metadata:)``.
     public private(set) var foreignBuild: ForeignBuild?
 
+    /// Generators that produce some of the target's sources. See ``CodeGenerator``.
+    public var codeGenerators: [CodeGenerator] = []
+
+    /// Properties for a code generation target. Set when this target was created with
+    /// ``codegen(name:script:inputs:environment:outputs:metadata:)``.
+    public private(set) var codegen: Codegen?
+
+    /// Describes a code generation target: one generator run whose output is source for several targets.
+    public struct Codegen: Codable, Equatable, Sendable {
+        public let script: String
+        public let inputs: [CodeGenerator.Input]
+        public let environment: [String: String]
+        public let outputs: [CodeGenerator.Output]
+    }
+
     /// An additional value that affects a target's output and should contribute to its content hash.
     public enum HashingInput: Codable, Hashable, Sendable {
         /// A path or glob pattern whose contents affect the target output.
@@ -278,6 +293,83 @@ public struct Target: Codable, Equatable, Sendable {
         return target
     }
 
+    /// Creates a code generation target: a product-less target whose single generator run produces sources for
+    /// several targets.
+    ///
+    /// Use it when one invocation emits into several modules, such as an Apollo configuration that puts schema types
+    /// and operation types in separate targets. The consumers declare nothing about code generation. For each
+    /// output, Tuist attaches a buildable folder to the consumer and adds a dependency from the consumer on this
+    /// target, so a change to the generator's declaration or inputs invalidates every consumer.
+    ///
+    /// ```swift
+    /// .codegen(
+    ///     name: "GQLCodegen",
+    ///     script: #"exec "$TUIST_ROOT_DIR/Codegen/apollo.sh""#,
+    ///     inputs: [
+    ///         .file("//Codegen/apollo.sh"),
+    ///         .file("//Codegen/schema.graphqls"),
+    ///         .glob("//Projects/**/*.graphql"),
+    ///         .script("mise x -- apollo-ios-cli --version"),
+    ///     ],
+    ///     outputs: [
+    ///         .output(target: "GQLSchema"),
+    ///         .output(project: "//Projects/Networking", target: "GQLTransport"),
+    ///     ]
+    /// )
+    /// ```
+    ///
+    /// The script receives the same environment as a ``CodeGenerator``, except that `TUIST_OUTPUTS_FILE` replaces
+    /// `TUIST_OUTPUT_SOURCES_DIR`: it points at a JSON array of `{"project", "target", "path"}` entries, one per
+    /// output, where `project` is the consumer's project directory relative to the repository root with a `//`
+    /// prefix.
+    ///
+    /// - Parameters:
+    ///   - name: The target's name.
+    ///   - script: The shell script that runs the generator.
+    ///   - inputs: The inputs the generator's output depends on.
+    ///   - environment: Variables the generator's output depends on.
+    ///   - outputs: The targets the generator produces sources for. Each target can have at most one producer.
+    ///   - metadata: The target's metadata.
+    public static func codegen(
+        name: String,
+        script: String,
+        inputs: [CodeGenerator.Input] = [],
+        environment: [String: String] = [:],
+        outputs: [CodeGenerator.Output],
+        metadata: TargetMetadata = .default
+    ) -> Self {
+        var target = self.init(
+            name: name,
+            destinations: .iOS,
+            product: .staticLibrary,
+            productName: nil,
+            bundleId: "tuist.codegen.\(String(name.map { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") ? $0 : "-" }))",
+            deploymentTargets: nil,
+            infoPlist: nil,
+            sources: nil,
+            resources: nil,
+            copyFiles: nil,
+            headers: nil,
+            entitlements: nil,
+            scripts: [],
+            additionalHashingInputs: [],
+            dependencies: [],
+            settings: nil,
+            coreDataModels: [],
+            environmentVariables: [:],
+            launchArguments: [],
+            additionalFiles: [],
+            buildRules: [],
+            mergedBinaryType: .disabled,
+            mergeable: false,
+            onDemandResourcesTags: nil,
+            metadata: metadata,
+            buildableFolders: []
+        )
+        target.codegen = Codegen(script: script, inputs: inputs, environment: environment, outputs: outputs)
+        return target
+    }
+
     public static func target(
         name: String,
         destinations: Destinations,
@@ -289,6 +381,7 @@ public struct Target: Codable, Equatable, Sendable {
         sources: SourceFilesList? = nil,
         resources: ResourceFileElements? = nil,
         buildableFolders: [BuildableFolder] = [],
+        codeGenerators: [CodeGenerator] = [],
         copyFiles: [CopyFilesAction]? = nil,
         headers: Headers? = nil,
         entitlements: Entitlements? = nil,
@@ -332,7 +425,8 @@ public struct Target: Codable, Equatable, Sendable {
             mergeable: mergeable,
             onDemandResourcesTags: onDemandResourcesTags,
             metadata: metadata,
-            buildableFolders: buildableFolders
+            buildableFolders: buildableFolders,
+            codeGenerators: codeGenerators
         )
     }
 }

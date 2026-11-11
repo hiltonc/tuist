@@ -6,6 +6,7 @@ import Path
 import Testing
 import TSCUtility
 import TuistAutomation
+import TuistCodeGen
 import TuistConfig
 import TuistConfigLoader
 import TuistCore
@@ -44,6 +45,7 @@ struct BuildServiceTests {
     private var buildGraphInspector: MockBuildGraphInspecting!
     private var targetBuilder: MockTargetBuilder!
     private var cacheStorageFactory: MockCacheStorageFactorying!
+    private var codeGeneratorMaterializer: MockCodeGeneratorMaterializing!
     private var subject: BuildService!
     private let fileSystem = FileSystem()
     private let configLoader: MockConfigLoading!
@@ -71,12 +73,15 @@ struct BuildServiceTests {
         given(cacheStorageFactory)
             .cacheStorage(config: .any)
             .willReturn(MockCacheStoring())
+        codeGeneratorMaterializer = .init()
+        given(codeGeneratorMaterializer).materialize(graph: .any).willReturn()
         subject = BuildService(
             generatorFactory: generatorFactory,
             cacheStorageFactory: cacheStorageFactory,
             buildGraphInspector: buildGraphInspector,
             targetBuilder: targetBuilder,
-            configLoader: configLoader
+            configLoader: configLoader,
+            codeGeneratorMaterializer: codeGeneratorMaterializer
         )
     }
 
@@ -212,6 +217,65 @@ struct BuildServiceTests {
                 schemeName: scheme.name,
                 path: temporaryDirectory
             )
+        }
+    }
+
+    @Test func run_materializes_code_generators_when_building_an_existing_workspace() async throws {
+        try await fileSystem.runInTemporaryDirectory(prefix: UUID().uuidString) {
+            temporaryDirectory in
+            // Given
+            let workspacePath = temporaryDirectory.appending(component: "App.xcworkspace")
+            let graph = Graph.test(path: temporaryDirectory)
+            let scheme = Scheme.test()
+            let project = Project.test()
+            let target = Target.test()
+            given(configLoader).loadConfig(path: .value(temporaryDirectory)).willReturn(
+                .test(project: .testGeneratedProject())
+            )
+            given(generator)
+                .load(path: .value(temporaryDirectory), options: .any)
+                .willReturn(graph)
+            given(buildGraphInspector)
+                .buildableSchemes(graphTraverser: .any)
+                .willReturn([scheme])
+            given(buildGraphInspector)
+                .buildableTarget(scheme: .value(scheme), graphTraverser: .any)
+                .willReturn(GraphTarget.test(path: project.path, target: target, project: project))
+            given(buildGraphInspector)
+                .workspacePath(directory: .value(temporaryDirectory))
+                .willReturn(workspacePath)
+            given(buildGraphInspector)
+                .buildArguments(project: .any, target: .any, configuration: .any, skipSigning: .any)
+                .willReturn([])
+            targetBuilder.buildTargetStub = { _, _, _, _, _, _, _, _, _, _, _, _ in }
+
+            // When
+            try await subject.testRun(schemeName: scheme.name, path: temporaryDirectory)
+
+            // Then
+            verify(codeGeneratorMaterializer).materialize(graph: .value(graph)).called(1)
+        }
+    }
+
+    @Test func run_doesnt_materialize_code_generators_when_only_generating() async throws {
+        try await fileSystem.runInTemporaryDirectory(prefix: UUID().uuidString) {
+            temporaryDirectory in
+            // Given
+            given(configLoader).loadConfig(path: .value(temporaryDirectory)).willReturn(
+                .test(project: .testGeneratedProject())
+            )
+            given(generator)
+                .load(path: .value(temporaryDirectory), options: .any)
+                .willReturn(.test(path: temporaryDirectory))
+            given(buildGraphInspector)
+                .workspacePath(directory: .value(temporaryDirectory))
+                .willReturn(temporaryDirectory.appending(component: "App.xcworkspace"))
+
+            // When
+            try await subject.testRun(path: temporaryDirectory, generateOnly: true)
+
+            // Then
+            verify(codeGeneratorMaterializer).materialize(graph: .any).called(0)
         }
     }
 
