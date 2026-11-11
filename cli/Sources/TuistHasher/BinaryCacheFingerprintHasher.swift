@@ -54,6 +54,7 @@ private final class Worker {
     var sharedSubhashes: [GraphHashedTarget: TargetContentHashSubhashes] = [:]
     var hashes: [Key: String] = [:]
     var hashedPaths: [AbsolutePath: String] = [:]
+    let scriptOutputs = HashingScriptOutputs()
 
     init(
         graph: Graph,
@@ -116,7 +117,8 @@ private final class Worker {
         } else {
             let fullHash = try await targetContentHasher.contentHash(
                 for: graphTarget, hashedTargets: dependencyHashes, hashedPaths: hashedPaths,
-                destination: nil, embeddedProductReferences: embeddedReferences(for: target), additionalStrings: strings
+                scriptOutputs: scriptOutputs, destination: nil,
+                embeddedProductReferences: embeddedReferences(for: target), additionalStrings: strings
             )
             sharedSubhashes[key.target] = fullHash.subhashes
             value = (fullHash.hash, fullHash.hashedPaths)

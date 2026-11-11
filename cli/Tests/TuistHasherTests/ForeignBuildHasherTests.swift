@@ -161,4 +161,37 @@ struct ForeignBuildHasherTests {
         // Then
         #expect(result.hash == "-hash")
     }
+
+    @Test
+    func hash_scriptInput_reusesTheOutputOfTheSameAdditionalHashingInputScript() async throws {
+        // Given
+        let script = "git rev-parse HEAD"
+        commandRunner.succeedCommand(["/bin/sh", "-c", script], output: "abc123")
+        given(contentHasher)
+            .hash(Parameter<[String]>.any)
+            .willReturn("combined-hash")
+        let additionalHashingInputsHasher = AdditionalHashingInputsHasher(
+            contentHasher: contentHasher,
+            commandRunner: commandRunner
+        )
+        let scriptOutputs = HashingScriptOutputs()
+
+        // When
+        _ = try await additionalHashingInputsHasher.hash(
+            inputs: [.script(script)],
+            hashedPaths: [:],
+            sourceRootPath: sourceRootPath,
+            scriptOutputs: scriptOutputs
+        )
+        let result = try await subject.hash(
+            inputs: [.script(script)],
+            hashedPaths: [:],
+            sourceRootPath: sourceRootPath,
+            scriptOutputs: scriptOutputs
+        )
+
+        // Then
+        #expect(result.hash == "abc123-hash-hash")
+        #expect(commandRunner.calls == ["/bin/sh -c \(script)"])
+    }
 }

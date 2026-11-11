@@ -11,7 +11,8 @@ public protocol ForeignBuildHashing {
     func hash(
         inputs: [ForeignBuild.Input],
         hashedPaths: [AbsolutePath: String],
-        sourceRootPath: AbsolutePath
+        sourceRootPath: AbsolutePath,
+        scriptOutputs: HashingScriptOutputs
     ) async throws -> (hash: String, hashedPaths: [AbsolutePath: String])
 }
 
@@ -30,7 +31,8 @@ public struct ForeignBuildHasher: ForeignBuildHashing {
     public func hash(
         inputs: [ForeignBuild.Input],
         hashedPaths: [AbsolutePath: String],
-        sourceRootPath: AbsolutePath
+        sourceRootPath: AbsolutePath,
+        scriptOutputs: HashingScriptOutputs = HashingScriptOutputs()
     ) async throws -> (hash: String, hashedPaths: [AbsolutePath: String]) {
         var hashedPaths = hashedPaths
         var hashes: [String] = []
@@ -58,11 +60,12 @@ public struct ForeignBuildHasher: ForeignBuildHashing {
                 hashes.append(folderHash)
 
             case let .script(script):
-                let output = try await commandRunner.runAndCollectOutput(
-                    arguments: ["/bin/sh", "-c", script],
-                    workingDirectory: sourceRootPath
+                let output = try await scriptOutputs.standardOutput(
+                    of: script,
+                    workingDirectory: sourceRootPath,
+                    commandRunner: commandRunner
                 )
-                hashes.append(try contentHasher.hash(output.standardOutput))
+                hashes.append(try contentHasher.hash(output))
             }
         }
 

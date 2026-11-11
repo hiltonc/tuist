@@ -12,7 +12,8 @@ public protocol AdditionalHashingInputsHashing {
     func hash(
         inputs: [TargetHashingInput],
         hashedPaths: [AbsolutePath: String],
-        sourceRootPath: AbsolutePath
+        sourceRootPath: AbsolutePath,
+        scriptOutputs: HashingScriptOutputs
     ) async throws -> (hash: String?, hashedPaths: [AbsolutePath: String])
 }
 
@@ -36,7 +37,8 @@ public struct AdditionalHashingInputsHasher: AdditionalHashingInputsHashing {
     public func hash(
         inputs: [TargetHashingInput],
         hashedPaths: [AbsolutePath: String],
-        sourceRootPath: AbsolutePath
+        sourceRootPath: AbsolutePath,
+        scriptOutputs: HashingScriptOutputs = HashingScriptOutputs()
     ) async throws -> (hash: String?, hashedPaths: [AbsolutePath: String]) {
         guard !inputs.isEmpty else {
             return (hash: nil, hashedPaths: hashedPaths)
@@ -68,11 +70,12 @@ public struct AdditionalHashingInputsHasher: AdditionalHashingInputsHashing {
                     }
                 componentHashes.append(try contentHasher.hash(component))
             case let .script(script):
-                let output = try await commandRunner.runAndCollectOutput(
-                    arguments: ["/bin/sh", "-c", script],
-                    workingDirectory: sourceRootPath
+                let output = try await scriptOutputs.standardOutput(
+                    of: script,
+                    workingDirectory: sourceRootPath,
+                    commandRunner: commandRunner
                 )
-                componentHashes.append(try contentHasher.hash("script-\(output.standardOutput)"))
+                componentHashes.append(try contentHasher.hash("script-\(output)"))
             }
         }
 

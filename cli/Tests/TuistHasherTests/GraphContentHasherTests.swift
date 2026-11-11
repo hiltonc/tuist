@@ -1,4 +1,5 @@
 import FileSystem
+import FileSystemTesting
 import Foundation
 import Mockable
 import Path
@@ -144,6 +145,7 @@ struct GraphContentHasherTests {
                 for: .any,
                 hashedTargets: .any,
                 hashedPaths: .any,
+                scriptOutputs: .any,
                 destination: .any,
                 embeddedProductReferences: .any,
                 additionalStrings: .any
@@ -168,10 +170,52 @@ struct GraphContentHasherTests {
                 for: .matching { $0.target.name == "Framework" },
                 hashedTargets: .any,
                 hashedPaths: .any,
+                scriptOutputs: .any,
                 destination: .any,
                 embeddedProductReferences: .value(["product:Bundle:Bundle.bundle"]),
                 additionalStrings: .any
             )
             .called(1)
+    }
+
+    @Test(.inTemporaryDirectory)
+    func contentHashes_runsAScriptSharedByTargetsOncePerPass() async throws {
+        // Given
+        let path = try #require(FileSystem.temporaryTestDirectory)
+        let runsPath = path.appending(component: "runs.log")
+        let script = "echo run >> runs.log; echo 1.2.3"
+        let targets = (1 ... 10).map {
+            Target.test(
+                name: "Framework\($0)",
+                product: .framework,
+                infoPlist: nil,
+                entitlements: nil,
+                additionalHashingInputs: [.script(script)]
+            )
+        }
+        let project = Project.test(path: path, sourceRootPath: path, targets: targets)
+        let graph = Graph.test(path: path, projects: [path: project])
+
+        // When
+        let firstPass = try await subject.contentHashes(
+            for: graph,
+            include: { _ in true },
+            destination: nil,
+            additionalStrings: { _ in [] }
+        )
+        let runsAfterFirstPass = try await fileSystem.readTextFile(at: runsPath)
+        _ = try await subject.contentHashes(
+            for: graph,
+            include: { _ in true },
+            destination: nil,
+            additionalStrings: { _ in [] }
+        )
+        let runsAfterSecondPass = try await fileSystem.readTextFile(at: runsPath)
+
+        // Then
+        #expect(firstPass.count == 10)
+        #expect(Set(firstPass.values.map(\.subhashes.additionalHashingInputs)).count == 1)
+        #expect(runsAfterFirstPass == "run\n")
+        #expect(runsAfterSecondPass == "run\nrun\n")
     }
 }
