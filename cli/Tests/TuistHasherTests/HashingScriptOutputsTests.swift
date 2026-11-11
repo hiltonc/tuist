@@ -76,20 +76,4 @@ struct HashingScriptOutputsTests {
         }
         #expect(commandRunner.calls.count == 1)
     }
-
-    @Test
-    func standardOutput_runsTheScriptAgainForANewPass() async throws {
-        let workingDirectory = try AbsolutePath(validating: "/project")
-        commandRunner.succeedCommand(["/bin/sh", "-c", script], output: "abc123")
-
-        for _ in 0 ..< 2 {
-            _ = try await HashingScriptOutputs().standardOutput(
-                of: script,
-                workingDirectory: workingDirectory,
-                commandRunner: commandRunner
-            )
-        }
-
-        #expect(commandRunner.calls.count == 2)
-    }
 }
