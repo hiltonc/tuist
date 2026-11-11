@@ -2167,6 +2167,7 @@ public enum Module: String, CaseIterable {
                     .target(name: Module.environmentTesting.targetName),
                     .target(name: Module.testing.targetName),
                     .target(name: Module.xcodeGraph.targetName),
+                    .target(name: Module.process.targetName),
                     .external(name: "FileSystem"),
                     .external(name: "FileSystemTesting"),
                 ]

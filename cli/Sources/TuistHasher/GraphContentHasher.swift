@@ -67,6 +67,7 @@ public struct GraphContentHasher: GraphContentHashing {
         var visitedIsHasheableNodes: [GraphTarget: Bool] = [:]
         let hashedTargets: ThreadSafe<[GraphHashedTarget: String]> = ThreadSafe([:])
         let hashedPaths: ThreadSafe<[AbsolutePath: String]> = ThreadSafe([:])
+        let scriptOutputs = HashingScriptOutputs()
 
         let sortedCacheableTargets = try graphTraverser.allTargetsTopologicalSorted()
         let hashableTargets = sortedCacheableTargets.filter { target in
@@ -83,6 +84,7 @@ public struct GraphContentHasher: GraphContentHashing {
             graphTraverser: graphTraverser,
             hashedTargets: hashedTargets,
             hashedPaths: hashedPaths,
+            scriptOutputs: scriptOutputs,
             destination: destination,
             additionalStrings: additionalStrings
         )
@@ -94,6 +96,7 @@ public struct GraphContentHasher: GraphContentHashing {
         graphTraverser: GraphTraversing,
         hashedTargets: ThreadSafe<[GraphHashedTarget: String]>,
         hashedPaths: ThreadSafe<[AbsolutePath: String]>,
+        scriptOutputs: HashingScriptOutputs,
         destination: SimulatorDeviceAndRuntime?,
         additionalStrings: @escaping (GraphTarget) -> [String]
     ) async throws -> [TargetContentHash] {
@@ -119,6 +122,7 @@ public struct GraphContentHasher: GraphContentHashing {
                     for: target,
                     hashedTargets: hashedTargets.value,
                     hashedPaths: hashedPaths.value,
+                    scriptOutputs: scriptOutputs,
                     destination: destination,
                     embeddedProductReferences: embeddedProductReferences,
                     additionalStrings: additionalStrings(target)

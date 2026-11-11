@@ -12,6 +12,7 @@ public protocol TargetContentHashing {
         for target: GraphTarget,
         hashedTargets: [GraphHashedTarget: String],
         hashedPaths: [AbsolutePath: String],
+        scriptOutputs: HashingScriptOutputs,
         destination: SimulatorDeviceAndRuntime?,
         embeddedProductReferences: [String],
         additionalStrings: [String]
@@ -127,6 +128,7 @@ public struct TargetContentHasher: TargetContentHashing { // swiftlint:disable:t
         for graphTarget: GraphTarget,
         hashedTargets: [GraphHashedTarget: String],
         hashedPaths: [AbsolutePath: String],
+        scriptOutputs: HashingScriptOutputs = HashingScriptOutputs(),
         destination: SimulatorDeviceAndRuntime?,
         embeddedProductReferences: [String] = [],
         additionalStrings: [String] = []
@@ -217,7 +219,8 @@ public struct TargetContentHasher: TargetContentHashing { // swiftlint:disable:t
         let additionalHashingInputsResult = try await additionalHashingInputsHasher.hash(
             inputs: graphTarget.target.additionalHashingInputs,
             hashedPaths: hashedPaths,
-            sourceRootPath: graphTarget.project.sourceRootPath
+            sourceRootPath: graphTarget.project.sourceRootPath,
+            scriptOutputs: scriptOutputs
         )
         hashedPaths = additionalHashingInputsResult.hashedPaths
 
@@ -343,7 +346,8 @@ public struct TargetContentHasher: TargetContentHashing { // swiftlint:disable:t
             let inputsResult = try await foreignBuildHasher.hash(
                 inputs: foreignBuild.inputs,
                 hashedPaths: hashedPaths,
-                sourceRootPath: graphTarget.project.sourceRootPath
+                sourceRootPath: graphTarget.project.sourceRootPath,
+                scriptOutputs: scriptOutputs
             )
             hashedPaths.merge(inputsResult.hashedPaths, uniquingKeysWith: { _, newValue in newValue })
             foreignBuildHash = try contentHasher.hash(

@@ -84,7 +84,7 @@ struct TargetContentHasherTests {
             .hash(graphTarget: .any, hashedTargets: .any, hashedPaths: .any)
             .willReturn(DependenciesContentHash(hashedPaths: [:], hash: "dependencies_hash"))
         given(additionalHashingInputsHasher)
-            .hash(inputs: .any, hashedPaths: .any, sourceRootPath: .any)
+            .hash(inputs: .any, hashedPaths: .any, sourceRootPath: .any, scriptOutputs: .any)
             .willReturn((hash: nil, hashedPaths: [:]))
         given(targetScriptsContentHasher)
             .hash(targetScripts: .any, sourceRootPath: .any)
@@ -208,7 +208,8 @@ struct TargetContentHasherTests {
             .hash(
                 inputs: .any,
                 hashedPaths: .any,
-                sourceRootPath: .any
+                sourceRootPath: .any,
+                scriptOutputs: .any
             )
             .willReturn((
                 hash: "additional_hashing_inputs_hash",
@@ -231,7 +232,8 @@ struct TargetContentHasherTests {
             .hash(
                 inputs: .value(hashingInputs),
                 hashedPaths: .any,
-                sourceRootPath: .any
+                sourceRootPath: .any,
+                scriptOutputs: .any
             )
             .called(1)
     }
@@ -599,7 +601,7 @@ struct TargetContentHasherTests {
             inputs: [],
             output: .xcframework(path: try AbsolutePath(validating: "/tmp/Library.xcframework"), linking: .static)
         )))
-        given(foreignBuildHasher).hash(inputs: .any, hashedPaths: .any, sourceRootPath: .any)
+        given(foreignBuildHasher).hash(inputs: .any, hashedPaths: .any, sourceRootPath: .any, scriptOutputs: .any)
             .willReturn((hash: "foreign-inputs", hashedPaths: [:]))
 
         let result = try await subject.contentHash(for: target, hashedTargets: [:], hashedPaths: [:], destination: nil)
