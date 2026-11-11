@@ -11,10 +11,10 @@ defmodule Tuist do
     # that `Tuist.OnceEvents` projects from.
     deps: [Once],
     exports: [
-      Jams,
-      Jams.Checkpoints,
-      Jams.Jam,
-      Jams.RecoveryWorker,
+      Threads,
+      Threads.Checkpoints,
+      Threads.Thread,
+      Threads.RecoveryWorker,
       # Marketing
       # -----
       # These modules contain utilities that are used for the marketing-related
@@ -250,6 +250,8 @@ defmodule Tuist do
       GitHistory.Ref,
       GitHistory.Commit,
       GitHistory.CommitFile,
+      GitHistory.FileChange,
+      GitHistory.FileChanges,
       GitHistory.CommitListing,
       GitHistory.CommitParent,
       GitHistory.Repository,
@@ -353,6 +355,7 @@ defmodule Tuist do
       Sandboxes.Router,
       Sandboxes.Sandbox,
       Sandboxes.Schemas,
+      Sandboxes.Uploads,
       # Customer-runner pool. The Tuist GitHub App fires
       # `workflow_job: queued` events into the webhook controller,
       # which delegates to Tuist.Runners.Dispatch; the
