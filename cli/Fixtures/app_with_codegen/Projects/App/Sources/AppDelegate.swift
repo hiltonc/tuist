@@ -14,8 +14,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     ) -> Bool {
         _ = Account()
         _ = AccountQuery.operationName
-        // Namespaced per catalog because AccountUI has two (Colors, Icons) — matching
-        // AssetsTemplate.swift:114-119, which nests when catalogs.count > 1.
+        // AccountUI has two catalogs (Colors, Icons), so the assets template namespaces accessors per catalog.
         _ = AccountUIAsset.Colors.brandPrimary
         return true
     }

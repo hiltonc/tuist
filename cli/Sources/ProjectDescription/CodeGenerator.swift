@@ -16,6 +16,7 @@
 ///             name: "assets",
 ///             script: #"exec "$TUIST_ROOT_DIR/scripts/assets.sh""#,
 ///             inputs: [
+///                 .file("//scripts/assets.sh"),
 ///                 .folder("Sources/AccountUI/Resources"),
 ///                 .file("//templates/Assets.stencil"),
 ///                 .script("mise x -- swiftgen --version"),
@@ -28,7 +29,7 @@
 /// The generator's output never contributes to the target's content hash. Its declaration does instead: the
 /// command, the name, the declared `environment`, and the logical path and contents of every input. Tuist assumes
 /// the output is a deterministic function of those, so an input the generator reads but doesn't declare can produce
-/// an incorrect cache hit.
+/// an incorrect cache hit. A script the command runs by path is such an input: declare it as a `.file`.
 ///
 /// The script runs from the project directory, inheriting the environment, with these variables set:
 ///

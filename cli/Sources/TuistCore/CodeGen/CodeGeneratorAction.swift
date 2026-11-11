@@ -36,8 +36,7 @@ public struct CodeGeneratorAction: Equatable, Hashable, Sendable {
     /// The target declaring the generator: its owner, or the code generation target itself.
     public let targetName: String
 
-    /// Whether the generator belongs to a code generation target.
-    public let isMultiTarget: Bool
+    public let isCodeGenerationTarget: Bool
 
     public let outputs: [Output]
 
@@ -48,14 +47,14 @@ public struct CodeGeneratorAction: Equatable, Hashable, Sendable {
         generator: CodeGenerator,
         projectPath: AbsolutePath,
         targetName: String,
-        isMultiTarget: Bool,
+        isCodeGenerationTarget: Bool,
         outputs: [Output],
         statePath: AbsolutePath
     ) {
         self.generator = generator
         self.projectPath = projectPath
         self.targetName = targetName
-        self.isMultiTarget = isMultiTarget
+        self.isCodeGenerationTarget = isCodeGenerationTarget
         self.outputs = outputs
         self.statePath = statePath
     }
@@ -68,7 +67,7 @@ public struct CodeGeneratorAction: Equatable, Hashable, Sendable {
                 generator: generator,
                 projectPath: projectPath,
                 targetName: target.name,
-                isMultiTarget: false,
+                isCodeGenerationTarget: false,
                 outputs: [
                     Output(
                         projectPath: projectPath,
@@ -93,7 +92,7 @@ public struct CodeGeneratorAction: Equatable, Hashable, Sendable {
                 generator: codegen,
                 projectPath: projectPath,
                 targetName: target.name,
-                isMultiTarget: true,
+                isCodeGenerationTarget: true,
                 outputs: codegen.outputs.map { output in
                     Output(
                         projectPath: output.projectPath,

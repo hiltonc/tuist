@@ -49,7 +49,7 @@ public struct CodeGeneratorWorkspaceMapper: WorkspaceMapping {
                 guard let projectIndex = projectIndices[output.projectPath] else { continue }
                 var consumer = workspace.projects[projectIndex].targets[output.target]!
                 consumer.buildableFolders.append(output.buildableFolder)
-                if action.isMultiTarget, !consumer.declaresDependency(
+                if action.isCodeGenerationTarget, !consumer.declaresDependency(
                     on: action.targetName,
                     in: action.projectPath,
                     from: output.projectPath
@@ -63,7 +63,7 @@ public struct CodeGeneratorWorkspaceMapper: WorkspaceMapping {
                 workspace.projects[projectIndex].targets[output.target] = consumer
             }
 
-            if action.isMultiTarget, let projectIndex = projectIndices[action.projectPath] {
+            if action.isCodeGenerationTarget, let projectIndex = projectIndices[action.projectPath] {
                 let consumerDestinations = action.outputs.reduce(into: Destinations()) { destinations, output in
                     guard let index = projectIndices[output.projectPath],
                           let consumer = workspace.projects[index].targets[output.target] else { return }
@@ -127,7 +127,7 @@ public struct CodeGeneratorWorkspaceMapper: WorkspaceMapping {
         }
 
         var producersByConsumer = [String: [String]]()
-        for action in actions where action.isMultiTarget {
+        for action in actions where action.isCodeGenerationTarget {
             for output in action.outputs {
                 guard let project = projectsByPath[output.projectPath] else {
                     issues.append(

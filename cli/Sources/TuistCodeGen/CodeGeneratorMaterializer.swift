@@ -64,7 +64,8 @@ public struct CodeGeneratorMaterializer: CodeGeneratorMaterializing {
             project.targets.values.sorted().flatMap { CodeGeneratorAction.actions(for: $0, projectPath: projectPath) }
         }
         .filter { action in
-            !action.isMultiTarget || action.outputs.contains { graph.projects[$0.projectPath]?.targets[$0.target] != nil }
+            !action.isCodeGenerationTarget || action.outputs
+                .contains { graph.projects[$0.projectPath]?.targets[$0.target] != nil }
         }
         guard !actions.isEmpty else { return }
 
@@ -152,7 +153,7 @@ public struct CodeGeneratorMaterializer: CodeGeneratorMaterializing {
             at: inputsFile
         )
         var outputsFile: AbsolutePath?
-        if action.isMultiTarget {
+        if action.isCodeGenerationTarget {
             let path = workDirectory.appending(component: "outputs.json")
             try await writeJSON(
                 zip(action.outputs, stagingDirectories).map { output, stagingDirectory in
@@ -171,7 +172,7 @@ public struct CodeGeneratorMaterializer: CodeGeneratorMaterializing {
         let environment = CodeGeneratorEnvironment.generatorEnvironment(
             for: action,
             inputsFile: inputsFile,
-            outputSourcesDirectory: action.isMultiTarget ? nil : stagingDirectories.first,
+            outputSourcesDirectory: action.isCodeGenerationTarget ? nil : stagingDirectories.first,
             outputsFile: outputsFile
         )
         var standardOutput = ""

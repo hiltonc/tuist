@@ -34,13 +34,13 @@ public struct CodeGeneratorActionHasher: CodeGeneratorActionHashing {
         let generator = action.generator
         var components = [
             "codegen-v\(Self.version)",
-            "kind:\(action.isMultiTarget ? "multi-target" : "per-target")",
+            "kind:\(action.isCodeGenerationTarget ? "multi-target" : "per-target")",
             "target:\(action.logicalProjectPath(action.projectPath)):\(action.targetName)",
             "name:\(generator.name)",
             "command:\(try contentHasher.hash(generator.script))",
             "environment:\(try contentHasher.hash(generator.environment))",
         ]
-        if action.isMultiTarget {
+        if action.isCodeGenerationTarget {
             components += action.outputs.map { "output:\(action.logicalProjectPath($0.projectPath)):\($0.target)" }
         }
 

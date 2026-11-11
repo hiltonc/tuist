@@ -25,6 +25,7 @@ A target lists the generators that produce its own sources in `codeGenerators`:
             name: "assets",
             script: #"exec "$TUIST_ROOT_DIR/scripts/swiftgen-assets.sh""#,
             inputs: [
+                .file("//scripts/swiftgen-assets.sh"),
                 .folder("Sources/AccountUI/Resources"),
                 .file("//templates/Assets.stencil"),
                 .script("mise x -- swiftgen --version"),
@@ -33,7 +34,7 @@ A target lists the generators that produce its own sources in `codeGenerators`:
         .script(
             name: "strings",
             script: #"exec "$TUIST_ROOT_DIR/scripts/strings.sh""#,
-            inputs: [.file("Strings/en.json")],
+            inputs: [.file("//scripts/strings.sh"), .file("Strings/en.json")],
             environment: ["STRINGS_ACCESS_LEVEL": "public"]
         ),
     ]
@@ -74,7 +75,7 @@ The `environment` parameter names the variables the output depends on. Its value
 > [!IMPORTANT]
 > **Declare everything the output depends on**
 >
-> Tuist assumes a generator's output is a deterministic function of its command, declared inputs, and declared environment. A file or variable the generator reads without declaring it can produce an incorrect cache hit. Editing generated files by hand is invisible to the cache, and the next run overwrites them.
+> Tuist assumes a generator's output is a deterministic function of its command, declared inputs, and declared environment. A file or variable the generator reads without declaring it can produce an incorrect cache hit. That includes a script the command runs by path: declare it as a `.file` input, since the hash covers only the command's text. Editing generated files by hand is invisible to the cache, and the next run overwrites them.
 
 An input can't overlap an output directory in either direction.
 
@@ -105,6 +106,7 @@ Some generators emit into several modules from one invocation, such as an Apollo
     name: "GQLCodegen",
     script: #"exec "$TUIST_ROOT_DIR/Codegen/apollo.sh""#,
     inputs: [
+        .file("//Codegen/apollo.sh"),
         .file("//Codegen/schema.graphqls"),
         .glob("//Projects/**/*.graphql"),
         .script("mise x -- apollo-ios-cli --version"),
@@ -144,7 +146,7 @@ Tuist attaches each output directory as a [buildable folder that declares its co
         .script(
             name: "localizations",
             script: #"exec "$TUIST_ROOT_DIR/scripts/localizations.sh""#,
-            inputs: [.file("Strings/en.json")],
+            inputs: [.file("//scripts/localizations.sh"), .file("Strings/en.json")],
             contents: [.sources, .resources]
         ),
     ]
@@ -152,7 +154,7 @@ Tuist attaches each output directory as a [buildable folder that declares its co
 .codegen(
     name: "GQLCodegen",
     script: #"exec "$TUIST_ROOT_DIR/Codegen/apollo.sh""#,
-    inputs: [.file("//Codegen/schema.graphqls")],
+    inputs: [.file("//Codegen/apollo.sh"), .file("//Codegen/schema.graphqls")],
     outputs: [
         .output(target: "GQLSchema"),
         .output(target: "GQLFixtures", contents: [.resources]),

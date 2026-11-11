@@ -306,6 +306,7 @@ public struct Target: Codable, Equatable, Sendable {
     ///     name: "GQLCodegen",
     ///     script: #"exec "$TUIST_ROOT_DIR/Codegen/apollo.sh""#,
     ///     inputs: [
+    ///         .file("//Codegen/apollo.sh"),
     ///         .file("//Codegen/schema.graphqls"),
     ///         .glob("//Projects/**/*.graphql"),
     ///         .script("mise x -- apollo-ios-cli --version"),
