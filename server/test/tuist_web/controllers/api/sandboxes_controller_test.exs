@@ -7,9 +7,11 @@ defmodule TuistWeb.API.SandboxesControllerTest do
   alias Tuist.Accounts.AuthenticatedAccount
   alias Tuist.Environment
   alias Tuist.Repo
+  alias Tuist.Sandboxes
   alias Tuist.Sandboxes.Capacity
   alias Tuist.Sandboxes.Nodes
   alias Tuist.Sandboxes.Sandbox
+  alias Tuist.Sandboxes.Workers.DeleteUploadWorker
   alias TuistTestSupport.Fixtures.AccountsFixtures
   alias TuistWeb.Authentication
 
@@ -23,6 +25,12 @@ defmodule TuistWeb.API.SandboxesControllerTest do
       |> put_req_header("content-type", "application/json")
 
     %{conn: conn, user: user, account: user.account}
+  end
+
+  defp token_conn(account, scopes) do
+    build_conn()
+    |> assign(:current_subject, %AuthenticatedAccount{account: account, scopes: scopes})
+    |> put_req_header("content-type", "application/json")
   end
 
   describe "account flag" do
@@ -73,7 +81,7 @@ defmodule TuistWeb.API.SandboxesControllerTest do
             {:orb_bootstrap_failed, 502, []},
             {:node_disconnected, 503, []}
           ] do
-        expect(Tuist.Sandboxes, :dispatch_amp_orb, fn _, _, _ -> {:error, reason} end)
+        expect(Sandboxes, :dispatch_amp_orb, fn _, _, _ -> {:error, reason} end)
 
         result =
           post(conn, ~p"/api/accounts/#{account.name}/sandboxes/amp-orbs/amp-thread", %{
@@ -361,6 +369,32 @@ defmodule TuistWeb.API.SandboxesControllerTest do
 
       assert response["message"] =~ "minLength"
     end
+
+    test "sets a Linux Claude Code environment's setup script and refuses one on other environments", %{
+      conn: conn,
+      account: account
+    } do
+      claude_code =
+        agent_environment_fixture(account: account, kind: :claude_code, anthropic_environment_id: "ccpool_01linux")
+
+      assert %{"setup_script" => "mise install\n"} =
+               conn
+               |> patch(~p"/api/accounts/#{account.name}/sandboxes/agent-environments/#{claude_code.id}", %{
+                 setup_script: "mise install\n"
+               })
+               |> json_response(:ok)
+
+      managed_agents = agent_environment_fixture(account: account)
+
+      response =
+        conn
+        |> patch(~p"/api/accounts/#{account.name}/sandboxes/agent-environments/#{managed_agents.id}", %{
+          setup_script: "mise install\n"
+        })
+        |> json_response(:bad_request)
+
+      assert response["message"] =~ "setup_script"
+    end
   end
 
   describe "authorization" do
@@ -376,11 +410,30 @@ defmodule TuistWeb.API.SandboxesControllerTest do
       assert response["message"] =~ "not authorized"
     end
 
-    test "forbids an account token", %{account: account} do
-      build_conn()
-      |> assign(:current_subject, %AuthenticatedAccount{account: account, scopes: ["account:runners:read"]})
-      |> get(~p"/api/accounts/#{account.name}/sandboxes")
-      |> json_response(:forbidden)
+    test "forbids an account token without the sandboxes write scope", %{account: account} do
+      sandbox = sandbox_fixture(account: account, state: :running, node_name: "node-a")
+      reject(&Nodes.call/4)
+
+      for scopes <- [["account:runners:write"], ["ci"], ["mcp"]] do
+        conn = token_conn(account, scopes)
+
+        conn |> get(~p"/api/accounts/#{account.name}/sandboxes") |> json_response(:forbidden)
+        conn |> post(~p"/api/accounts/#{account.name}/sandboxes", %{}) |> json_response(:forbidden)
+
+        conn
+        |> post(~p"/api/accounts/#{account.name}/sandboxes/#{sandbox.id}/exec", %{command: "true"})
+        |> json_response(:forbidden)
+      end
+    end
+
+    test "forbids an account token for another account", %{account: account} do
+      other_account = AccountsFixtures.organization_fixture(preload: [:account]).account
+      sandbox = sandbox_fixture(account: account, state: :running, node_name: "node-a")
+      reject(&Nodes.call/4)
+      conn = token_conn(other_account, ["account:sandboxes:write"])
+
+      conn |> get(~p"/api/accounts/#{account.name}/sandboxes/#{sandbox.id}") |> json_response(:forbidden)
+      conn |> post(~p"/api/accounts/#{account.name}/sandboxes", %{}) |> json_response(:forbidden)
     end
 
     test "requires authentication", %{account: account} do
@@ -531,8 +584,8 @@ defmodule TuistWeb.API.SandboxesControllerTest do
                "vcpu_hours" => vcpu_hours,
                "created" => %{"count" => 0, "points" => points},
                "concurrency" => %{
-                 "limits" => %{"vcpus" => 32, "memory_gb" => 64.0, "disk_gb" => 420.0},
-                 "in_use" => %{"vcpus" => 4, "memory_gb" => 8.0, "disk_gb" => 18.0}
+                 "limits" => %{"vcpus" => 32, "memory_gb" => 64.0},
+                 "in_use" => %{"vcpus" => 4, "memory_gb" => 8.0}
                }
              } =
                conn
@@ -677,6 +730,36 @@ defmodule TuistWeb.API.SandboxesControllerTest do
                conn |> get(~p"/api/accounts/#{account.name}/sandboxes/#{sandbox.id}/commands") |> json_response(:ok)
     end
 
+    @tag :tmp_dir
+    test "refuses a working directory missing in the sandbox with 400", %{conn: conn, account: account, tmp_dir: home} do
+      sandbox = sandbox_fixture(account: account, state: :running, node_name: "node-a")
+      missing = Path.join(home, "does-not-exist")
+
+      # Runs the real start script. The guest agent cannot start a process in
+      # a missing directory, so the exec itself must run in the workspace.
+      expect(Nodes, :call, fn "node-a", "exec", %{cmd: ["/bin/bash", "-c", script], cwd: cwd, env: env}, _opts ->
+        assert cwd == Sandboxes.workspace(sandbox)
+        {_output, code} = System.cmd("/bin/bash", ["-c", script], env: Map.put(env, "HOME", home), cd: home)
+        {:ok, %{"exit_code" => code}}
+      end)
+
+      assert %{"message" => message} =
+               conn
+               |> post(~p"/api/accounts/#{account.name}/sandboxes/#{sandbox.id}/commands", %{
+                 command: "true",
+                 cwd: missing
+               })
+               |> json_response(:bad_request)
+
+      assert message =~ missing
+
+      assert conn |> get(~p"/api/accounts/#{account.name}/sandboxes/#{sandbox.id}/commands") |> json_response(:ok) == %{
+               "commands" => []
+             }
+
+      refute File.exists?(Path.join(home, ".cache"))
+    end
+
     test "streams 404 as a plain status for an unknown command", %{conn: conn, account: account} do
       sandbox = sandbox_fixture(account: account, state: :running, node_name: "node-a")
       reject(&Nodes.call/4)
@@ -710,6 +793,110 @@ defmodule TuistWeb.API.SandboxesControllerTest do
       conn
       |> post(~p"/api/accounts/#{account.name}/sandboxes/#{sandbox.id}/commands", %{command: "true"})
       |> json_response(:forbidden)
+    end
+
+    test "an account token with the sandboxes write scope creates, runs commands in and deletes a sandbox", %{
+      account: account
+    } do
+      conn = token_conn(account, ["account:sandboxes:write"])
+      stub(Capacity, :place, fn %{template: "default"} -> {:ok, "node-a"} end)
+      expect(Nodes, :call, fn "node-a", "create", _args, _opts -> {:ok, %{"template_tag" => "sha-1"}} end)
+
+      assert %{"id" => id, "state" => "running"} =
+               conn |> post(~p"/api/accounts/#{account.name}/sandboxes", %{}) |> json_response(:created)
+
+      assert %{"sandboxes" => [%{"id" => ^id}]} =
+               conn |> get(~p"/api/accounts/#{account.name}/sandboxes") |> json_response(:ok)
+
+      assert %{"id" => ^id} = conn |> get(~p"/api/accounts/#{account.name}/sandboxes/#{id}") |> json_response(:ok)
+
+      expect(Nodes, :call, fn "node-a", "exec", %{cmd: ["/bin/bash", "-lc", "echo hi"]}, opts ->
+        opts[:on_stream].({:stdout, "hi\n"})
+        {:ok, %{"exit_code" => 0}}
+      end)
+
+      assert %{"exit_code" => 0, "stdout" => "hi\n"} =
+               conn
+               |> post(~p"/api/accounts/#{account.name}/sandboxes/#{id}/exec", %{command: "echo hi"})
+               |> json_response(:ok)
+
+      expect(Nodes, :call, fn "node-a", "exec", _args, _opts -> {:ok, %{"exit_code" => 0}} end)
+
+      assert %{"id" => command_id, "status" => "running"} =
+               conn
+               |> post(~p"/api/accounts/#{account.name}/sandboxes/#{id}/commands", %{command: "xcodebuild"})
+               |> json_response(:accepted)
+
+      assert %{"commands" => [%{"id" => ^command_id}]} =
+               conn |> get(~p"/api/accounts/#{account.name}/sandboxes/#{id}/commands") |> json_response(:ok)
+
+      expect(Nodes, :call, fn "node-a", "delete", _args, _opts -> {:ok, %{}} end)
+      conn |> delete(~p"/api/accounts/#{account.name}/sandboxes/#{id}") |> response(:no_content)
+      assert Repo.get(Sandbox, id) == nil
+    end
+
+    test "an account token with the sandboxes write scope cannot use an agent's sandbox or admin-only routes", %{
+      account: account
+    } do
+      conn = token_conn(account, ["account:sandboxes:write"])
+      environment = agent_environment_fixture(account: account)
+
+      sandbox =
+        sandbox_fixture(account: account, state: :running, node_name: "node-a", agent_environment_id: environment.id)
+
+      reject(&Nodes.call/4)
+
+      conn
+      |> post(~p"/api/accounts/#{account.name}/sandboxes/#{sandbox.id}/exec", %{command: "env"})
+      |> json_response(:forbidden)
+
+      conn |> get(~p"/api/accounts/#{account.name}/sandboxes/#{sandbox.id}") |> json_response(:forbidden)
+      conn |> get(~p"/api/accounts/#{account.name}/sandboxes/analytics") |> json_response(:forbidden)
+      conn |> get(~p"/api/accounts/#{account.name}/sandboxes/agent-environments") |> json_response(:forbidden)
+      conn |> post(~p"/api/accounts/#{account.name}/sandboxes/#{sandbox.id}/archive") |> json_response(:forbidden)
+    end
+
+    test "a member creates an upload, which is deleted once its URLs expire", %{conn: conn} do
+      {conn, account} = member_conn(conn, :user)
+      sandbox = sandbox_fixture(account: account, state: :running, node_name: "node-a")
+      other_sandbox = sandbox_fixture(state: :running, node_name: "node-a")
+      prefix = "sandbox-uploads/#{account.id}/#{sandbox.id}/"
+      reject(&Nodes.call/4)
+
+      expect(Tuist.Storage, :generate_upload_url, fn key, %{id: account_id}, [expires_in: 3600] ->
+        assert account_id == account.id
+        assert String.starts_with?(key, prefix)
+        "https://storage/#{key}?put"
+      end)
+
+      expect(Tuist.Storage, :generate_download_url, fn key, _account, [expires_in: 3600] ->
+        "https://storage/#{key}?get"
+      end)
+
+      assert %{
+               "upload_url" => "https://storage/" <> upload,
+               "download_url" => "https://storage/" <> download,
+               "expires_at" => expires_at
+             } =
+               conn
+               |> post(~p"/api/accounts/#{account.name}/sandboxes/#{sandbox.id}/uploads")
+               |> json_response(:ok)
+
+      # Whole seconds: the CLI's generated client fails to decode fractional ones.
+      assert expires_at =~ ~r/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/
+
+      key = String.trim_trailing(upload, "?put")
+      assert download == key <> "?get"
+      assert [%Oban.Job{args: args, scheduled_at: scheduled_at}] = all_enqueued(worker: DeleteUploadWorker)
+      assert args == %{"account_id" => account.id, "key" => key}
+      assert DateTime.diff(scheduled_at, DateTime.utc_now()) > 3600
+
+      expect(Tuist.Storage, :delete_object, fn ^key, %{id: account_id} when account_id == account.id -> :ok end)
+      assert :ok = perform_job(DeleteUploadWorker, args)
+
+      conn
+      |> post(~p"/api/accounts/#{account.name}/sandboxes/#{other_sandbox.id}/uploads")
+      |> json_response(:not_found)
     end
 
     test "writes the decoded stdin bytes to the command", %{conn: conn, account: account} do

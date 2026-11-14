@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -156,6 +157,9 @@ func dispatch(req request) error {
 	}
 	switch req.Op {
 	case "ping":
+		if err := waitNetwork(3 * time.Second); err != nil {
+			return err
+		}
 		emit(response{Type: "pong"})
 		return nil
 	case "cpu":
@@ -301,6 +305,24 @@ func dispatch(req request) error {
 		return nil
 	default:
 		return errors.New("unknown operation")
+	}
+}
+
+// waitNetwork waits for the guest's default route. A guest restored from a
+// checkpoint answers before DHCP has given it back (about 2 s), and the
+// worker the host starts next cannot resolve or reach anything until then.
+// Connecting a UDP socket only looks up the route; it sends nothing.
+func waitNetwork(budget time.Duration) error {
+	deadline := time.Now().Add(budget)
+	for {
+		conn, err := net.Dial("udp4", "192.0.2.1:9")
+		if err == nil {
+			return conn.Close()
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("guest network not ready: %w", err)
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 func command(req request) (*exec.Cmd, error) {
@@ -504,31 +526,12 @@ func orbBootstrap() error {
 	cmd.Stdout, cmd.Stderr = logFile, logFile
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	cmd.Env = []string{"PATH=" + filepath.Dir(amp) + ":/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
-		"HOME=" + home, "USER=" + os.Getenv("USER"), "LANG=en_US.UTF-8", "ORB_TOKEN=" + token, "AMP_URL=" + ampURL,
-		// macOS Orbs are not qualified yet: a project thread's first setup
-		// fails without a trace at the default level. Debug records each
-		// bootstrap request in ~/.cache/amp/logs/cli.log.
-		"AMP_LOG_LEVEL=debug"}
+		"HOME=" + home, "USER=" + os.Getenv("USER"), "LANG=en_US.UTF-8", "ORB_TOKEN=" + token, "AMP_URL=" + ampURL}
 	// No Tuist credential reaches Amp: Tuist clients in the guest sign in with the Orb's Amp identity.
 	for _, name := range []string{"TUIST_URL", "TUIST_CACHE_ENDPOINT"} {
 		if value := os.Getenv(name); value != "" {
 			cmd.Env = append(cmd.Env, name+"="+value)
 		}
-	}
-	// The CLI does not log what a bootstrap request runs, even at debug. Until
-	// macOS Orbs are qualified, record every exec and exit for ten minutes,
-	// which covers the first setup and Amp's restart attempts. Arguments may
-	// hold credentials, so the file is root-only. Best effort: a missing trace
-	// must not fail the spawn, and a running trace is kept.
-	trace := exec.Command("/usr/bin/sudo", "-n", "/bin/sh", "-c",
-		`/usr/bin/pgrep -x eslogger >/dev/null && exit 0
-umask 077
-/usr/bin/eslogger exec exit >"$1" 2>&1 &
-sleep 600
-kill $!`, "sh", filepath.Join(home, ".amp-exec-trace.jsonl"))
-	trace.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	if trace.Start() == nil {
-		_ = trace.Process.Release()
 	}
 	if err = cmd.Start(); err != nil {
 		return err
